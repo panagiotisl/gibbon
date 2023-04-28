@@ -1,5 +1,12 @@
 package gr.aueb.delorean.gibbon;
 
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.LinkedList;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+
 import fi.iki.yak.ts.compression.gorilla.BitOutput;
 
 /**
@@ -16,6 +23,9 @@ public class GibbonAutoCompressor {
     private boolean first = true;
     private int size;
     private int cases[];
+    private List<Integer> leading;
+    private List<Integer> trailing;
+    private Map<Integer, Integer> exponents;
     private float trailingDiff;
     private float leadingDiff;
 
@@ -37,6 +47,9 @@ public class GibbonAutoCompressor {
         }
         int cases[] = {0, 0, 0};
         this.cases = cases;
+        this.leading = new LinkedList<>();
+        this.trailing = new LinkedList<>();
+        this.exponents = new HashMap<>();
         this.trailingDiff = 0;
         this.leadingDiff = 0;
     }
@@ -95,6 +108,7 @@ public class GibbonAutoCompressor {
 
         // TODO Fix already compiled into a big method
     	int integerDigits = (value << 1 >>> 24) - 127;
+    	this.exponents.put(integerDigits, this.exponents.getOrDefault(integerDigits, 0) + 1);
     	int space = 23 + this.logOfError - integerDigits;
 
     	if (space > 0) {
@@ -111,7 +125,7 @@ public class GibbonAutoCompressor {
         if(leadingZeros >= 16) {
             leadingZeros = 15;
         }
-//            leadingZeros = leadingZeros % 2 == 0 ? leadingZeros : (leadingZeros - 1);
+        leadingZeros = leadingZeros % 2 == 0 ? leadingZeros : (leadingZeros - 1);
 
         // Store bit '1'
         //out.skipBit();
@@ -122,6 +136,8 @@ public class GibbonAutoCompressor {
         	cases[1] += 1;
         	this.trailingDiff += trailingZeros - storedTrailingZeros;
         	this.leadingDiff += leadingZeros - storedLeadingZeros;
+        	this.leading.add(leadingZeros);
+        	this.trailing.add(trailingZeros);
             writeExistingLeading(xor);
         } else {
         	cases[2] += 1;
@@ -185,8 +201,8 @@ public class GibbonAutoCompressor {
      */
     private void writeNewLeading(int xor, int leadingZeros, int trailingZeros) {
     	writeCaseNewLeading(mode);
-        out.writeBits(leadingZeros, 4); // Number of leading zeros in the next 4 bits
-//        out.writeBits(leadingZeros / 2, 3); // Number of leading zeros in the next 4 bits
+//        out.writeBits(leadingZeros, 4); // Number of leading zeros in the next 4 bits
+        out.writeBits(leadingZeros / 2, 3); // Number of leading zeros in the next 4 bits
 
         int significantBits = 32 - leadingZeros - trailingZeros;
         if (significantBits == 32) {
@@ -198,7 +214,8 @@ public class GibbonAutoCompressor {
 
         storedLeadingZeros = leadingZeros;
         storedTrailingZeros = trailingZeros;
-        size += 4 + 5 + significantBits;
+//        size += 4 + 5 + significantBits;
+        size += 3 + 5 + significantBits;
     }
 
     public int getSize() {
@@ -219,5 +236,18 @@ public class GibbonAutoCompressor {
     
     public int getBestMode() {
     	return cases[0] > cases[1] ? 0 : 1;
+    }
+    
+    public void printLeadingAndTrailing() {
+    	if (this.leading.size() < 1 || this.trailing.size() < 1) {
+    		return;
+    	}
+    	double leading = this.leading.stream().mapToDouble(e -> e).average().getAsDouble();
+    	double trailing = this.trailing.stream().mapToDouble(e -> e).average().getAsDouble();
+    	System.out.println(leading + "\t" + this.leading.size() + "\t" + trailing + "\t" + this.trailing.size());
+    }
+    
+    public void printExponents() {
+    	System.out.println(this.exponents);
     }
 }

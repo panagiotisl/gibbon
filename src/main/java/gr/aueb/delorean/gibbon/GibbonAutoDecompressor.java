@@ -96,7 +96,7 @@ public class GibbonAutoDecompressor {
 			} else { }
 		} else if (flag == 2) {
 			// New leading and trailing zeros
-            storedLeadingZeros = (int) in.getLong(4);
+            storedLeadingZeros = (int) in.getLong(3) * 2;
 
             byte significantBits = (byte) in.getLong(5);
             if(significantBits == 0) {
