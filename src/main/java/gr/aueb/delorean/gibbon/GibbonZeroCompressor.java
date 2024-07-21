@@ -8,7 +8,7 @@ import fi.iki.yak.ts.compression.gorilla.BitOutput;
  *
  * @author Michael Burman
  */
-public class GibbonCompressor {
+public class GibbonZeroCompressor {
 
     private int storedLeadingZeros = Integer.MAX_VALUE;
     private int storedTrailingZeros = 0;
@@ -23,7 +23,7 @@ public class GibbonCompressor {
     private int logOfError;
 	private double epsilon;
 
-    public GibbonCompressor(BitOutput output, double epsilon) {
+    public GibbonZeroCompressor(BitOutput output, double epsilon) {
         this.out = output;
         this.size = 0;
         this.epsilon = epsilon;

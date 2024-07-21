@@ -7,6 +7,7 @@ import java.io.ByteArrayOutputStream;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import java.util.stream.Collectors;
 
 public class SwingFilterEncoder {
     public static byte[] getBinary(List<SwingFilterSegment> segments) {
@@ -53,6 +54,6 @@ public class SwingFilterEncoder {
             e.printStackTrace();
         }
 
-        return segments.stream().sorted(Comparator.comparingDouble(SwingFilterSegment::getInitialTimestamp)).toList();
+        return segments.stream().sorted(Comparator.comparingDouble(SwingFilterSegment::getInitialTimestamp)).collect(Collectors.toList());
     }
 }

@@ -7,6 +7,7 @@ import java.io.ByteArrayOutputStream;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import java.util.stream.Collectors;
 
 public class PMCMREncoder {
     public static byte[] getBinary(List<PMCMRSegment> segments) {
@@ -43,6 +44,6 @@ public class PMCMREncoder {
             e.printStackTrace();
         }
 
-        return segments.stream().sorted(Comparator.comparingDouble(PMCMRSegment::getInitialTimestamp)).toList();
+        return segments.stream().sorted(Comparator.comparingDouble(PMCMRSegment::getInitialTimestamp)).collect(Collectors.toList());
     }
 }

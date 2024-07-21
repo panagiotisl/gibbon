@@ -32,7 +32,7 @@ public class CompressTest {
 	private class TimeseriesFileReader {
 		private static final int DEFAULT_BLOCK_SIZE = 1_000;
 		private static final String DELIMITER = ",";
-		private static final int VALUE_POSITION = 2;
+		private static final int VALUE_POSITION = 1;
 		BufferedReader bufferedReader;
 		private int blocksize;
 

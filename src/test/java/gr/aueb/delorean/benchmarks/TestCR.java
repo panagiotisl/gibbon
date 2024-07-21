@@ -1,16 +1,12 @@
 package gr.aueb.delorean.benchmarks;
 
+import gr.aueb.delorean.gibbon.*;
 import gr.aueb.delorean.util.TimeSeries;
-import gr.aueb.delorean.gibbon.GibbonAutoCompressor;
-import gr.aueb.delorean.gibbon.GibbonAutoDecompressor;
-import gr.aueb.delorean.gibbon.GibbonCompressor;
-import gr.aueb.delorean.gibbon.GibbonDecompressor;
-import gr.aueb.delorean.gibbon.RunLengthEncodingDecompressor32;
-import gr.aueb.delorean.gibbon.RunLengthEncodingLossyCompressor32;
 import gr.aueb.delorean.pmcmr.PMCMRCompressor;
 import gr.aueb.delorean.pmcmr.PMCMRDecompressor;
 import gr.aueb.delorean.pmcmr.PMCMREncoder;
 import gr.aueb.delorean.pmcmr.PMCMRSegment;
+import gr.aueb.delorean.simpiece.SimPiece;
 //import gr.aueb.delorean.simpiece.SimPieceCompressor;
 //import gr.aueb.delorean.simpiece.SimPieceDecompressor;
 //import gr.aueb.delorean.simpiece.SimPieceEncoder;
@@ -33,7 +29,6 @@ import java.io.InputStreamReader;
 import java.io.Reader;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
-import java.util.Arrays;
 import java.util.Iterator;
 import java.util.List;
 import java.util.zip.GZIPInputStream;
@@ -41,7 +36,11 @@ import java.util.zip.GZIPInputStream;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
 public class TestCR {
-	
+
+    private long compressionTime = 0L;
+    private long decompressionTime = 0L;
+    private double error = 0D;
+    private double squareError = 0D;
     final String[] filenames = {
           "/Lightning.csv.gz",
           "/Wafer.csv.gz",
@@ -108,30 +107,39 @@ public class TestCR {
     	ByteBufferBitOutput output = new ByteBufferBitOutput();
     	GibbonCompressor compressor = new GibbonCompressor(output, epsilon);
     	Iterator<Point> iterator = ts.iterator();
+        long start = System.nanoTime();
     	while (iterator.hasNext()) {
     		compressor.addValue((float) iterator.next().getValue());
     	}
         compressor.close();
+        long end = System.nanoTime();
+        compressionTime += end - start;
         long compressedSize = compressor.getSize() / 8;
         
         ByteBuffer byteBuffer = output.getByteBuffer();
         byteBuffer.flip();
         ByteBufferBitInput input = new ByteBufferBitInput(byteBuffer);
         GibbonDecompressor d = new GibbonDecompressor(input);
+
+        start = System.nanoTime();
         for (Point point : ts) {
+
             float decompressedValue = d.readValue().getFloatValue();
+            error += Math.abs((float) point.getValue() - decompressedValue);
+            squareError += error * error;
             assertEquals(
                     (float) point.getValue(),
                     decompressedValue,
-                    1.1 * epsilon,
+                    epsilon,
                     "Value did not match for timestamp " + point.getTimestamp()
             );
         }
-
+        end = System.nanoTime();
+        decompressionTime += end - start;
         return compressedSize;
     }
-    
-    
+
+
     private long[] GibbonAuto(List<Point> ts, double epsilon, int mode) {
     	ByteBufferBitOutput output = new ByteBufferBitOutput();
     	GibbonAutoCompressor compressor = new GibbonAutoCompressor(output, epsilon, mode);
@@ -141,6 +149,10 @@ public class TestCR {
     	}
         compressor.close();
         long compressedSize = compressor.getSize() / 8;
+        float total = compressor.getCases()[0] + compressor.getCases()[1] + compressor.getCases()[2]; 
+        //System.out.println(compressor.getCases()[0] / total + "\t" + compressor.getCases()[1] / total + "\t" + compressor.getCases()[2] / total);
+//        compressor.printLeadingAndTrailing();
+//        compressor.printExponents();
         
         ByteBuffer byteBuffer = output.getByteBuffer();
         byteBuffer.flip();
@@ -148,15 +160,17 @@ public class TestCR {
         GibbonAutoDecompressor d = new GibbonAutoDecompressor(input);
         for (Point point : ts) {
             float decompressedValue = d.readValue().getFloatValue();
+//            System.out.println(decompressedValue + " " + epsilon);
             assertEquals(
                     (float) point.getValue(),
                     decompressedValue,
-                    1.1 * epsilon,
+                    epsilon,
                     "Value did not match for timestamp " + point.getTimestamp()
             );
         }
         return new long[] {compressedSize, compressor.getBestMode()};
     }
+
     
     private long GibbonRLE(List<Point> ts, double epsilon) {
     	ByteBufferBitOutput output = new ByteBufferBitOutput();
@@ -179,6 +193,27 @@ public class TestCR {
                     decompressedValue,
                     1.1 * epsilon,
                     "Value did not match for timestamp " + point.getTimestamp()
+            );
+        }
+
+        return compressedSize;
+    }
+
+    
+    private long SimPiece(List<Point> ts, double epsilon) {
+        SimPiece simPiece = new SimPiece(ts, epsilon);
+        byte[] binary = simPiece.toByteArray();
+
+        long compressedSize = binary.length;
+
+        simPiece = new SimPiece(binary);
+        List<Point> tsDecompressed = simPiece.decompress();
+        for (int i = 0; i < ts.size(); i++) {
+            assertEquals(
+                    ts.get(i).getValue(),
+                    tsDecompressed.get(i).getValue(),
+                    1.2 * epsilon,
+                    "Value did not match for timestamp " + ts.get(i).getTimestamp()
             );
         }
 
@@ -208,7 +243,7 @@ public class TestCR {
 //    }
 
 
-    @Test
+//    @Test
     public void testCR() {
         double epsilonStart = 0.005;
         double epsilonStep = 0.005;
@@ -220,25 +255,29 @@ public class TestCR {
             System.out.println(filename);
             TimeSeries ts = TimeSeriesReader.getTimeSeries(getClass().getResourceAsStream(filename), delimiter);
 
-            System.out.println("PMCMR");
-            for (double epsilonPct = epsilonStart; epsilonPct <= epsilonEnd; epsilonPct += epsilonStep)
-                System.out.printf("Epsilon: %.2f%%\tCompression Ratio: %.3f\tepsilin: %.5f\n",
-                        epsilonPct * 100, (double) ts.size / PMCMR(ts.data, ts.range * epsilonPct), ts.range * epsilonPct);
+//            System.out.println("PMCMR");
+//            for (double epsilonPct = epsilonStart; epsilonPct <= epsilonEnd; epsilonPct += epsilonStep)
+//                System.out.printf("Epsilon: %.2f%%\tCompression Ratio: %.3f\tepsilin: %.5f\n",
+//                        epsilonPct * 100, (double) ts.size / PMCMR(ts.data, ts.range * epsilonPct), ts.range * epsilonPct);
 
-            System.out.println("Swing");
-            for (double epsilonPct = epsilonStart; epsilonPct <= epsilonEnd; epsilonPct += epsilonStep)
-                System.out.printf("Epsilon: %.2f%%\tCompression Ratio: %.3f\n",
-                        epsilonPct * 100, (double) ts.size / Swing(ts.data, ts.range * epsilonPct));
+//            System.out.println("Swing");
+//            for (double epsilonPct = epsilonStart; epsilonPct <= epsilonEnd; epsilonPct += epsilonStep)
+//                System.out.printf("Epsilon: %.2f%%\tCompression Ratio: %.3f\n",
+//                        epsilonPct * 100, (double) ts.size / Swing(ts.data, ts.range * epsilonPct));
 
             System.out.println("Gibbon");
-            for (double epsilonPct = epsilonStart; epsilonPct <= epsilonEnd; epsilonPct += epsilonStep)
-                System.out.printf("Epsilon: %.2f%%\tCompression Ratio: %.3f\n",
-                        epsilonPct * 100, (double) ts.size / Gibbon(ts.data, ts.range * epsilonPct));
-
-            System.out.println("GibbonRLE");
-            for (double epsilonPct = epsilonStart; epsilonPct <= epsilonEnd; epsilonPct += epsilonStep)
-                System.out.printf("Epsilon: %.2f%%\tCompression Ratio: %.3f\n",
-                        epsilonPct * 100, (double) ts.size / GibbonRLE(ts.data, ts.range * epsilonPct));
+            for (double epsilonPct = epsilonStart; epsilonPct <= epsilonEnd; epsilonPct += epsilonStep) {
+                compressionTime = 0L;
+                decompressionTime = 0L;
+                System.out.printf("Epsilon: %.2f%%\tCompression Ratio: %.3f\tCompression Time: %.3f\tDeCompression Time: %.3f\n",
+                        epsilonPct * 100, (double) ts.size / Gibbon(ts.data, ts.range * epsilonPct), compressionTime / 1000000.0, decompressionTime / 1000000.0);
+            }
+            compressionTime = 0L;
+            decompressionTime = 0L;
+//            System.out.println("GibbonRLE");
+//            for (double epsilonPct = epsilonStart; epsilonPct <= epsilonEnd; epsilonPct += epsilonStep)
+//                System.out.printf("Epsilon: %.2f%%\tCompression Ratio: %.3f\n",
+//                        epsilonPct * 100, (double) ts.size / GibbonRLE(ts.data, ts.range * epsilonPct));
 
 //            System.out.println("Sim-Piece");
 //            for (double epsilonPct = epsilonStart; epsilonPct <= epsilonEnd; epsilonPct += epsilonStep)
@@ -251,7 +290,7 @@ public class TestCR {
     
     @Test
     public void testCrDecimals() {
-    	double[] epsilons = {0.05, 0.005, 0.0005, 0.00005, 0.000005};
+    	double[] epsilons = {0.05, 0.005, 0.0005, 0.00005 }; //, 0.000005};
 
         String delimiter = ",";
 
@@ -268,28 +307,32 @@ public class TestCR {
 //            for (double epsilon : epsilons)
 //                System.out.printf("Epsilon: %.5f\tCompression Ratio: %.3f\n",
 //                		epsilon, (double) ts.size / Swing(ts.data, epsilon));
-
             System.out.println("Gibbon");
-            for (double epsilon : epsilons)
-            	System.out.printf("Epsilon: %.5f\tCompression Ratio: %.3f\n",
-                		epsilon, (double) ts.size / Gibbon(ts.data, epsilon));
-
-            System.out.println("GibbonRLE");
-            for (double epsilon : epsilons)
-            	System.out.printf("Epsilon: %.5f\tCompression Ratio: %.3f\n",
-                		epsilon, (double) ts.size / GibbonRLE(ts.data, epsilon));
+            for (double epsilon : epsilons) {
+                compressionTime = 0L;
+                decompressionTime = 0L;
+                error = 0D;
+                squareError = 0D;
+                System.out.printf("Epsilon: %.5f\tCompression Ratio: %.3f\tCompression Time: %.3f\tDecompression Time: %.3f\tMAE: %5f\tRMSE: %5f\n",
+                        epsilon, (double) ts.size / Gibbon(ts.data, epsilon), compressionTime / 1000000.0, decompressionTime / 1000000.0, error / ts.size, Math.sqrt(squareError / (ts.size * ts.size)));
+            }
+//
+//            System.out.println("GibbonRLE");
+//            for (double epsilon : epsilons)
+//            	System.out.printf("Epsilon: %.5f\tCompression Ratio: %.3f\n",
+//                		epsilon, (double) ts.size / GibbonRLE(ts.data, epsilon));
 
 //            System.out.println("Sim-Piece");
 //            for (double epsilon : epsilons)
-//            	System.out.printf("Epsilon: %.5f\tCompression Ratio: %.3f\n",
-//                		epsilon, (double) ts.size / SimPiece(ts.data, epsilon));
+//            	System.out.printf("%.3f\n",
+//                		(double) ts.size / SimPiece(ts.data, epsilon));
 
             System.out.println();
         }
     }
 
 
-	@Test
+//	@Test
 	public void testCrDecimalsInBlocks() throws IOException {
 		double[] epsilons = {0.05, 0.005, 0.0005, 0.00005, 0.000005};
 	
@@ -319,8 +362,6 @@ public class TestCR {
 //		        System.out.printf("Epsilon: %.5f\tCompression Ratio: %.3f - Size: %d, Compressed size: %d\n",
 //	            		epsilon, (double) totalSize / totalCompressedSize, totalSize, totalCompressedSize);
 	        }
-	
-	        System.out.println();
 	    }
 	}
 }

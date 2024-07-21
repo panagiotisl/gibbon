@@ -96,16 +96,22 @@ public class GibbonAutoDecompressor {
 			} else { }
 		} else if (flag == 2) {
 			// New leading and trailing zeros
-            storedLeadingZeros = (int) in.getLong(3) * 2;
+			storedLeadingZeros = (int) in.getLong(4);
+//            storedLeadingZeros = (int) in.getLong(3) * 2;
 
             byte significantBits = (byte) in.getLong(5);
             if(significantBits == 0) {
                 significantBits = 32;
             }
             storedTrailingZeros = 32 - significantBits - storedLeadingZeros;
+//            System.out.println(storedLeadingZeros + " " + significantBits + " " + storedTrailingZeros);
+//            System.out.println(Long.toBinaryString( Integer.toUnsignedLong(storedVal) | 0x100000000L ).substring(1));
     		int value = (int) in.getLong(32 - storedLeadingZeros - storedTrailingZeros);
             value <<= storedTrailingZeros;
+//            System.out.println(Long.toBinaryString( Integer.toUnsignedLong(value) | 0x100000000L ).substring(1));
             value = storedVal ^ value;
+//            System.out.println(Long.toBinaryString( Integer.toUnsignedLong(value) | 0x100000000L ).substring(1));
+//            System.out.println(Float.intBitsToFloat(value));
             if (value == NAN_INT) {
             	endOfStream = true;
             	return;
