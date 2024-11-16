@@ -12,11 +12,11 @@ public class GibbonAutoDecompressor {
     private int storedLeadingZeros = Integer.MAX_VALUE;
     private int storedTrailingZeros = 0;
     private int storedVal = 0;
-    private int mode = 0;
+    private boolean mode = false;
     private boolean first = true;
     private boolean endOfStream = false;
 
-    private BitInput in;
+    private final BitInput in;
 
     private final static int NAN_INT = 0x7fc00000;
 
@@ -41,13 +41,12 @@ public class GibbonAutoDecompressor {
     private void next() {
         if (first) {
         	first = false;
-            storedVal = (int) in.getLong(32);
-            if (in.readBit()) {
-            	this.mode = 1;
-            }
+			if (in.readBit()) {
+				this.mode = true;
+			}
+            storedVal = in.getInt(32);
             if (storedVal == NAN_INT) {
             	endOfStream = true;
-            	return;
             }
 
         } else {
@@ -59,67 +58,46 @@ public class GibbonAutoDecompressor {
         // Read value
     	if (in.readBit()) {
     		if (in.readBit()) {
-    			decodeValueWithFlag(2);
+				// New leading and trailing zeros
+				storedLeadingZeros = in.getInt(4);
+
+				int significantBits = in.getInt(5) ;
+				if(significantBits == 0) {
+					significantBits = 32;
+				}
+				storedTrailingZeros = 32 - significantBits - storedLeadingZeros;
+				int value = in.getInt(32 - storedLeadingZeros - storedTrailingZeros);
+				value <<= storedTrailingZeros;
+				value = storedVal ^ value;
+				if (value == NAN_INT) {
+					endOfStream = true;
+				} else {
+					storedVal = value;
+				}
     		} else {
-    			decodeValueWithFlag(1);
+				if (!mode) {
+					int value = in.getInt(32 - storedLeadingZeros - storedTrailingZeros);
+					value <<= storedTrailingZeros;
+					value = storedVal ^ value;
+					if (value == NAN_INT) {
+						endOfStream = true;
+					} else {
+						storedVal = value;
+					}
+				}
     		}
     	} else {
-    		decodeValueWithFlag(0);        
+			if (mode) {
+				int value = in.getInt(32 - storedLeadingZeros - storedTrailingZeros);
+				value <<= storedTrailingZeros;
+				value = storedVal ^ value;
+				if (value == NAN_INT) {
+					endOfStream = true;
+				} else {
+					storedVal = value;
+				}
+			}
     	}
     }
-
-	private void decodeValueWithFlag(int flag) {
-		if (flag == 0) {
-			if (mode == 0) {
-			} else {
-				int value = (int) in.getLong(32 - storedLeadingZeros - storedTrailingZeros);
-	            value <<= storedTrailingZeros;
-	            value = storedVal ^ value;
-	            if (value == NAN_INT) {
-	            	endOfStream = true;
-	            	return;
-	            } else {
-	            	storedVal = value;
-	            }	
-			}
-		} else if (flag == 1) {
-			if (mode == 0) {
-				int value = (int) in.getLong(32 - storedLeadingZeros - storedTrailingZeros);
-	            value <<= storedTrailingZeros;
-	            value = storedVal ^ value;
-	            if (value == NAN_INT) {
-	            	endOfStream = true;
-	            	return;
-	            } else {
-	            	storedVal = value;
-	            }
-			} else { }
-		} else if (flag == 2) {
-			// New leading and trailing zeros
-			storedLeadingZeros = (int) in.getLong(4);
-//            storedLeadingZeros = (int) in.getLong(3) * 2;
-
-            byte significantBits = (byte) in.getLong(5);
-            if(significantBits == 0) {
-                significantBits = 32;
-            }
-            storedTrailingZeros = 32 - significantBits - storedLeadingZeros;
-//            System.out.println(storedLeadingZeros + " " + significantBits + " " + storedTrailingZeros);
-//            System.out.println(Long.toBinaryString( Integer.toUnsignedLong(storedVal) | 0x100000000L ).substring(1));
-    		int value = (int) in.getLong(32 - storedLeadingZeros - storedTrailingZeros);
-            value <<= storedTrailingZeros;
-//            System.out.println(Long.toBinaryString( Integer.toUnsignedLong(value) | 0x100000000L ).substring(1));
-            value = storedVal ^ value;
-//            System.out.println(Long.toBinaryString( Integer.toUnsignedLong(value) | 0x100000000L ).substring(1));
-//            System.out.println(Float.intBitsToFloat(value));
-            if (value == NAN_INT) {
-            	endOfStream = true;
-            	return;
-            } else {
-            	storedVal = value;
-            }
-		}
-		
-	}
 
 }

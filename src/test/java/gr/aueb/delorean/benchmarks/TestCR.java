@@ -23,14 +23,18 @@ import fi.iki.yak.ts.compression.gorilla.ByteBufferBitInput;
 import fi.iki.yak.ts.compression.gorilla.ByteBufferBitOutput;
 
 import java.io.BufferedReader;
+import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.Reader;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
+import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
+import java.util.Random;
+import java.util.Set;
 import java.util.zip.GZIPInputStream;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -51,15 +55,15 @@ public class TestCR {
           "/basel-wind-speed.csv.gz",
           "/Stocks-Germany.csv.gz",
           "/Stocks-UK-sample.csv.gz",
-          "/Stocks-USA-sample.csv.gz",
-          "/NEON_temp-bio-bioTempMean-sample.csv.gz",
-          "/NEON_pressure-air_staPresMean-sample.csv.gz",
-          "/NEON_wind-2d_windDirMean-sample.csv.gz",
-          "/NEON_temp-bio-bioTempMean-sample.csv.gz"
-          
+//          "/Stocks-USA-sample.csv.gz",
+//          "/NEON_temp-bio-bioTempMean-sample.csv.gz",
+//          "/NEON_pressure-air_staPresMean-sample.csv.gz",
+//          "/NEON_wind-2d_windDirMean-sample.csv.gz",
+//          "/NEON_temp-bio-bioTempMean-sample.csv.gz",
+
   };
-	
-	
+
+
     private long PMCMR(List<Point> ts, double epsilon) {
         List<PMCMRSegment> segments = PMCMRCompressor.filter(ts, epsilon);
 
@@ -102,7 +106,7 @@ public class TestCR {
 
         return compressedSize;
     }
-  
+
     private long Gibbon(List<Point> ts, double epsilon) {
     	ByteBufferBitOutput output = new ByteBufferBitOutput();
     	GibbonCompressor compressor = new GibbonCompressor(output, epsilon);
@@ -115,7 +119,7 @@ public class TestCR {
         long end = System.nanoTime();
         compressionTime += end - start;
         long compressedSize = compressor.getSize() / 8;
-        
+
         ByteBuffer byteBuffer = output.getByteBuffer();
         byteBuffer.flip();
         ByteBufferBitInput input = new ByteBufferBitInput(byteBuffer);
@@ -144,23 +148,29 @@ public class TestCR {
     	ByteBufferBitOutput output = new ByteBufferBitOutput();
     	GibbonAutoCompressor compressor = new GibbonAutoCompressor(output, epsilon, mode);
     	Iterator<Point> iterator = ts.iterator();
+        long start = System.nanoTime();
     	while (iterator.hasNext()) {
     		compressor.addValue((float) iterator.next().getValue());
     	}
         compressor.close();
-        long compressedSize = compressor.getSize() / 8;
-        float total = compressor.getCases()[0] + compressor.getCases()[1] + compressor.getCases()[2]; 
-        //System.out.println(compressor.getCases()[0] / total + "\t" + compressor.getCases()[1] / total + "\t" + compressor.getCases()[2] / total);
-//        compressor.printLeadingAndTrailing();
-//        compressor.printExponents();
-        
+        long end = System.nanoTime();
+        compressionTime += end - start;
+        //long compressedSize = compressor.getSize() / 8;
+
         ByteBuffer byteBuffer = output.getByteBuffer();
+        long compressedSize = byteBuffer.position();
         byteBuffer.flip();
         ByteBufferBitInput input = new ByteBufferBitInput(byteBuffer);
         GibbonAutoDecompressor d = new GibbonAutoDecompressor(input);
+        start = System.nanoTime();
         for (Point point : ts) {
             float decompressedValue = d.readValue().getFloatValue();
-//            System.out.println(decompressedValue + " " + epsilon);
+//            float roundedDecompressedValue = (float) (Math.round(round * decompressedValue) / round);
+//            float originalValue = (float) (Math.round(round * point.getValue()) / round);
+//            System.out.println(((float) point.getValue()) + " " + originalValue + " " + roundedDecompressedValue + " " + decompressedValue + " " + epsilon);
+//            assertEquals(originalValue, roundedDecompressedValue, 0.00001D);
+            error += Math.abs((float) point.getValue() - decompressedValue);
+            squareError += error * error;
             assertEquals(
                     (float) point.getValue(),
                     decompressedValue,
@@ -168,10 +178,12 @@ public class TestCR {
                     "Value did not match for timestamp " + point.getTimestamp()
             );
         }
+        end = System.nanoTime();
+        decompressionTime += end - start;
         return new long[] {compressedSize, compressor.getBestMode()};
     }
 
-    
+
     private long GibbonRLE(List<Point> ts, double epsilon) {
     	ByteBufferBitOutput output = new ByteBufferBitOutput();
     	RunLengthEncodingLossyCompressor32 compressor = new RunLengthEncodingLossyCompressor32(output, epsilon);
@@ -181,7 +193,7 @@ public class TestCR {
     	}
         compressor.close();
         long compressedSize = compressor.getSize() / 8;
-        
+
         ByteBuffer byteBuffer = output.getByteBuffer();
         byteBuffer.flip();
         ByteBufferBitInput input = new ByteBufferBitInput(byteBuffer);
@@ -199,7 +211,7 @@ public class TestCR {
         return compressedSize;
     }
 
-    
+
     private long SimPiece(List<Point> ts, double epsilon) {
         SimPiece simPiece = new SimPiece(ts, epsilon);
         byte[] binary = simPiece.toByteArray();
@@ -287,7 +299,7 @@ public class TestCR {
             System.out.println();
         }
     }
-    
+
     @Test
     public void testCrDecimals() {
     	double[] epsilons = {0.05, 0.005, 0.0005, 0.00005 }; //, 0.000005};
@@ -332,20 +344,22 @@ public class TestCR {
     }
 
 
-//	@Test
+	@Test
 	public void testCrDecimalsInBlocks() throws IOException {
 		double[] epsilons = {0.05, 0.005, 0.0005, 0.00005, 0.000005};
-	
+
 	    String delimiter = ",";
 	    int blockSize = 1000;
-	
+
 	    for (String filename : filenames) {
-	        System.out.println(filename);
-	        System.out.println("Gibbon");
 	        long[] result = {0, 0};
 	        for (double epsilon : epsilons) {
 	        	long totalCompressedSize = 0;
 	        	long totalSize = 0;
+                compressionTime = 0L;
+                decompressionTime = 0L;
+                error = 0D;
+                squareError = 0D;
 	        	InputStream inputStream = getClass().getResourceAsStream(filename);
 	        	InputStream gzipStream = new GZIPInputStream(inputStream);
 	            Reader decoder = new InputStreamReader(gzipStream, StandardCharsets.UTF_8);
@@ -357,11 +371,105 @@ public class TestCR {
 		        	result = GibbonAuto(ts.data, epsilon, (int) result[1]);
 		        	totalCompressedSize += result[0];
 		        } while (ts.size > 0);
-		        System.out.printf("%.3f\n",
-	            		(double) totalSize / totalCompressedSize);
-//		        System.out.printf("Epsilon: %.5f\tCompression Ratio: %.3f - Size: %d, Compressed size: %d\n",
-//	            		epsilon, (double) totalSize / totalCompressedSize, totalSize, totalCompressedSize);
+                System.out.printf("GibbonAuto\t%s\tEpsilon: %.5f\tCompression Ratio: %.3f\tCompression Time: %.3f\tDecompression Time: %.3f\tMAE: %5f\tRMSE: %5f\n",
+                        filename, epsilon, (double) totalSize / totalCompressedSize, compressionTime / 1000000.0, decompressionTime / 1000000.0, error / totalSize, Math.sqrt(squareError / (totalSize * totalSize)));
 	        }
 	    }
 	}
+
+//    @Test
+    public void testFloats() {
+        int spacePowers[] = new int[32];
+        for (int i=0; i<spacePowers.length; i++) {
+            spacePowers[i] = (int) Math.pow(2, i) - 1;
+        }
+
+        float value1 = 4.6692F;
+        float value2 = 1.618F;
+
+        int logOfError = 0;
+        double epsilon = 0.00005;
+        for (int power = 30; power > -30; power--) {
+            if (Math.pow(2, power) < epsilon) {
+                logOfError = power;
+                break;
+            }
+        }
+
+        int storedVal = Float.floatToRawIntBits(value1);
+        int value = Float.floatToRawIntBits(value2);
+        System.out.println(String.format("%32s", Integer.toBinaryString(value)).replace(' ', '0'));
+        // TODO Fix already compiled into a big method
+        int integerDigits = (value << 1 >>> 24) - 127;
+        System.out.println("Digits:\t" + integerDigits);
+        int space = Math.min(23, 23 + logOfError - integerDigits);
+        System.out.println("Space:\t" + space);
+        if (space > 0) {
+            value = value >> space << space;
+            value = value | (storedVal & spacePowers[space]);
+        }
+        int xor = storedVal ^ value;
+
+
+
+        System.out.println(String.format("%32s", Integer.toBinaryString(storedVal)).replace(' ', '0'));
+        System.out.println(String.format("%32s", Integer.toBinaryString(value)).replace(' ', '0'));
+        System.out.println(String.format("%32s", Integer.toBinaryString(xor)).replace(' ', '0'));
+
+    }
+
+    @Test
+    public void testZeroingandReplacing() {
+        int spacePowers[] = new int[32];
+        for (int i=0; i<spacePowers.length; i++) {
+            spacePowers[i] = (int) Math.pow(2, i) - 1;
+        }
+
+        int logOfError = 0;
+        double epsilon = 0.5;
+        for (int power = 30; power > -30; power--) {
+            if (Math.pow(2, power) < epsilon) {
+                logOfError = power;
+                break;
+            }
+        }
+
+        String line = "";
+        double totalError = 0D;
+        int count = 0;
+        Set<Integer> masks = new HashSet<>();
+        Set<Integer> numbers = new HashSet<>();
+        Random random = new Random();
+        try (BufferedReader br = new BufferedReader(new InputStreamReader(new GZIPInputStream(TestCR.class.getResourceAsStream("/Cricket-uniq.csv.gz"))))) {
+            float storedValueFloat = Float.parseFloat(br.readLine().trim().split(",")[1]);
+            while ((line = br.readLine()) != null) {
+                float valueFloat = Float.parseFloat(line.trim().split(",")[1]);
+
+                int storedVal = Float.floatToRawIntBits(storedValueFloat);
+//                int storedVal = random.nextInt();
+                int value = Float.floatToRawIntBits(valueFloat);
+
+                int integerDigits = (value << 1 >>> 24) - 127;
+                int space = Math.min(23, 23 + logOfError - integerDigits);
+                if (space > 0) {
+                    value = value >> space << space;
+//                    value = value | spacePowers[space];
+                    value = value | (storedVal & spacePowers[space]);
+                    masks.add(storedVal & spacePowers[space]);
+                    numbers.add(storedVal);
+                }
+
+                float approximation = Float.intBitsToFloat(value);
+                totalError += Math.abs(valueFloat - approximation);
+                count++;
+                storedValueFloat = valueFloat;
+
+            }
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
+        System.out.println("Average error is: " + totalError / count);
+        System.out.println("Masks: " + masks.size() + ", Numbers: " + numbers.size() + " Count: " + count);
+
+    }
 }

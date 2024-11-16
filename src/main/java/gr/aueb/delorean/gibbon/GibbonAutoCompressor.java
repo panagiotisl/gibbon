@@ -9,12 +9,6 @@ import java.util.Set;
 
 import fi.iki.yak.ts.compression.gorilla.BitOutput;
 
-/**
- * Implements the time series compression as described in the Facebook's Gorilla Paper. Value compression
- * is for floating points only.
- *
- * @author Michael Burman
- */
 public class GibbonAutoCompressor {
 
     private int storedLeadingZeros = Integer.MAX_VALUE;
@@ -29,7 +23,7 @@ public class GibbonAutoCompressor {
     private float trailingDiff;
     private float leadingDiff;
     private int bufferCounter = 0;
-    private List<Integer> bufferCounters = new LinkedList<>(); 
+    private List<Integer> bufferCounters = new LinkedList<>();
     private float max = -1000000;
     private float min = Float.MAX_VALUE;
     private float bufferValue;
@@ -39,6 +33,7 @@ public class GibbonAutoCompressor {
 	private double epsilon;
 	private int mode;
 //	private int counter = 0;
+    private int spacePowers[] = new int[32];
 
     public GibbonAutoCompressor(BitOutput output, double epsilon, int mode) {
         this.out = output;
@@ -51,13 +46,15 @@ public class GibbonAutoCompressor {
         		break;
         	}
         }
-        int cases[] = {0, 0, 0};
-        this.cases = cases;
+        this.cases = new int[]{0, 0, 0};
         this.leading = new LinkedList<>();
         this.trailing = new LinkedList<>();
         this.exponents = new HashMap<>();
         this.trailingDiff = 0;
         this.leadingDiff = 0;
+        for (int i=0; i<spacePowers.length; i++) {
+            this.spacePowers[i] = (int) Math.pow(2, i) - 1;
+        }
     }
 
     public void addValue(float value) {
@@ -65,7 +62,7 @@ public class GibbonAutoCompressor {
     	addValueInternal(value);
 //    	counter++;
     }
-    
+
    public void addValueLine(float value) {
    	if (value > this.max) this.max = value;
        if (value < this.min) this.min = value;
@@ -83,7 +80,7 @@ public class GibbonAutoCompressor {
        	this.bufferCounter = 1;
        }
    }
-   
+
    private void clearBuffer() {
 //	   if (!this.bufferCounters.isEmpty()) {
 //		   System.out.println("AVERAGE: " + this.bufferCounters
@@ -99,7 +96,7 @@ public class GibbonAutoCompressor {
    		this.bufferCounter = 0;
    	}
 	}
-    
+
 	/**
      * Adds a new double value to the series. Note, values must be inserted in order.
      *
@@ -108,8 +105,8 @@ public class GibbonAutoCompressor {
      */
     public void addValueInternal(float value) {
         if(first) {
-            writeFirst(Float.floatToRawIntBits(value));
             writeMode(this.mode);
+            writeFirst(Float.floatToRawIntBits(value));
         } else {
         	compressValue(Float.floatToRawIntBits(value));
         }
@@ -121,7 +118,7 @@ public class GibbonAutoCompressor {
         out.writeBits(storedVal, 32);
         size += 32;
     }
-    
+
     private void writeMode(int mode) {
 		switch (mode) {
 		case 0:
@@ -152,21 +149,22 @@ public class GibbonAutoCompressor {
         } else {
         	int integerDigits = (value << 1 >>> 24) - 127;
 //        	int integerDigits = ((value >> 23) & 0xff) - 127;
-        	this.exponents.put(integerDigits, this.exponents.getOrDefault(integerDigits, 0) + 1);
+//        	this.exponents.put(integerDigits, this.exponents.getOrDefault(integerDigits, 0) + 1);
         	int space = 23 + this.logOfError - integerDigits;
         	space = space > 23 ? 23 : space;
         	if (space > 0) {
         		value = value >> space << space;
-            	value = value | (storedVal & ((int) Math.pow(2, space) - 1));
+            	value = value | (storedVal & spacePowers[space]);
         	}
         	int xor = storedVal ^ value;
-        	
+
         		int leadingZeros = Integer.numberOfLeadingZeros(xor);
                 int trailingZeros = Integer.numberOfTrailingZeros(xor);
-                
-                if (leadingZeros + trailingZeros > 32) {
-                	trailingZeros = 32 - leadingZeros;
-                }
+
+                // TODO check if needed
+//                if (leadingZeros + trailingZeros > 32) {
+//                	trailingZeros = 32 - leadingZeros;
+//                }
 
                 // Check overflow of leading? Can't be 32!
                 if(leadingZeros >= 16) {
@@ -187,13 +185,13 @@ public class GibbonAutoCompressor {
                 	cases[2] += 2;
                     writeNewLeading(xor, leadingZeros, trailingZeros);
                 }
-        	
+
         }
 
         storedVal = value;
     }
-    
-    
+
+
     private void compressValueXorEq(int value) {
         // TODO Fix already compiled into a big method
         if(value == storedVal) {
@@ -216,7 +214,7 @@ public class GibbonAutoCompressor {
             	value = value | (storedVal & ((int) Math.pow(2, space) - 1));
         	}
         	int xor = storedVal ^ value;
-        	
+
         	if (xor == 0) {
         		cases[0] += 1;
             	writeCaseEqual(mode);
@@ -243,14 +241,14 @@ public class GibbonAutoCompressor {
                 	cases[2] += 2;
                     writeNewLeading(xor, leadingZeros, trailingZeros);
                 }
-	
+
         	}
-        	
+
         }
 
         storedVal = value;
     }
-    
+
     private void compressValue(int value) {
     	// if values is within error wrt the previous value, use the previous value
     	if (Math.abs(Float.intBitsToFloat(value) - Float.intBitsToFloat(storedVal)) < epsilon) {
@@ -266,16 +264,16 @@ public class GibbonAutoCompressor {
 //    		integerDigits = -6;
 //    	}
 //    	int integerDigits = ((value >> 23) & 0xff) - 127;
-    	this.exponents.put(integerDigits, this.exponents.getOrDefault(integerDigits, 0) + 1);
-    	int space = 23 + this.logOfError - integerDigits;
-    	space = space > 23 ? 23 : space;
+//    	this.exponents.put(integerDigits, this.exponents.getOrDefault(integerDigits, 0) + 1);
+    	int space = Math.min(23, 23 + this.logOfError - integerDigits);
+//    	space = space > 23 ? 23 : space;
 //    	System.out.println(value + " " + Float.intBitsToFloat(value));
     	if (space > 0) {
     		value = value >> space << space;
-        	value = value | (storedVal & ((int) Math.pow(2, space) - 1));
+        	value = value | (storedVal & spacePowers[space]);
     	}
     	int xor = storedVal ^ value;
-    	
+
         int leadingZeros = Integer.numberOfLeadingZeros(xor);
         int trailingZeros = Integer.numberOfTrailingZeros(xor);
         // Check overflow of leading? Can't be 32!
@@ -284,21 +282,29 @@ public class GibbonAutoCompressor {
         }
 //        leadingZeros = leadingZeros % 2 == 0 ? leadingZeros : (leadingZeros - 1);
 
-        // Store bit '1'
-        //out.skipBit();
-//        size += 1;
-
         if((leadingZeros >= storedLeadingZeros && trailingZeros >= storedTrailingZeros)
-        		&& leadingZeros + trailingZeros < storedLeadingZeros + storedTrailingZeros + 10) {
+        		&& leadingZeros + trailingZeros < storedLeadingZeros + storedTrailingZeros + 9 + mode) {
         	cases[1] += 1;
-        	this.trailingDiff += trailingZeros - storedTrailingZeros;
-        	this.leadingDiff += leadingZeros - storedLeadingZeros;
-        	this.leading.add(leadingZeros);
-        	this.trailing.add(trailingZeros);
-            writeExistingLeading(xor);
+//        	this.trailingDiff += trailingZeros - storedTrailingZeros;
+//        	this.leadingDiff += leadingZeros - storedLeadingZeros;
+//        	this.leading.add(leadingZeros);
+//        	this.trailing.add(trailingZeros);
+            writeCaseExistingLeading(mode);
+            int significantBits = 32 - storedLeadingZeros - storedTrailingZeros;
+            out.writeBits(xor >>> storedTrailingZeros, significantBits);
+            size += significantBits;
         } else {
         	cases[2] += 1;
-            writeNewLeading(xor, leadingZeros, trailingZeros);
+            writeCaseNewLeading(mode);
+            out.writeBits(leadingZeros, 4); // Number of leading zeros in the next 4 bits
+            int significantBits = 32 - leadingZeros - trailingZeros;
+
+            out.writeBits(significantBits, 5); // Length of meaningful bits in the next 5 bits
+            out.writeBits(xor >>> trailingZeros, significantBits); // Store the meaningful bits of XOR
+
+            storedLeadingZeros = leadingZeros;
+            storedTrailingZeros = trailingZeros;
+            size += 4 + 5 + significantBits;
         }
 
         storedVal = value;
@@ -325,7 +331,7 @@ public class GibbonAutoCompressor {
             size ++;
     	}
 	}
-    
+
     private void writeCaseNewLeading(int mode) {
 		out.writeBit();
         out.writeBit();
@@ -359,16 +365,16 @@ public class GibbonAutoCompressor {
     private void writeNewLeading(int xor, int leadingZeros, int trailingZeros) {
     	writeCaseNewLeading(mode);
         out.writeBits(leadingZeros, 4); // Number of leading zeros in the next 4 bits
-//        System.out.println("Wrote LZ: " + leadingZeros + " " + trailingZeros);
 //        out.writeBits(leadingZeros / 2, 3); // Number of leading zeros in the next 4 bits
         int significantBits = 32 - leadingZeros - trailingZeros;
-        
-        if (significantBits == 32) {
-        	out.writeBits(0, 5); // Length of meaningful bits in the next 5 bits
-        } else {
+
+        // TODO Check if needed
+//        if (significantBits == 32) {
+//        	out.writeBits(0, 5); // Length of meaningful bits in the next 5 bits
+//        } else {
 //        	System.out.println("Wrote SB: " + significantBits);
         	out.writeBits(significantBits, 5); // Length of meaningful bits in the next 5 bits
-        }
+//        }
         out.writeBits(xor >>> trailingZeros, significantBits); // Store the meaningful bits of XOR
 
         storedLeadingZeros = leadingZeros;
@@ -378,9 +384,9 @@ public class GibbonAutoCompressor {
 //        size += 3 + 5 + significantBits;
     }
 
-    public int getSize() {
-    	return size;
-    }
+//    public int getSize() {
+//    	return size;
+//    }
 
     public float getLeadingDiff() {
 		return leadingDiff;
@@ -393,11 +399,11 @@ public class GibbonAutoCompressor {
     public int[] getCases() {
 		return cases;
 	}
-    
+
     public int getBestMode() {
     	return cases[0] > cases[1] ? 0 : 1;
     }
-    
+
     public void printLeadingAndTrailing() {
     	if (this.leading.size() < 1 || this.trailing.size() < 1) {
     		return;
@@ -406,7 +412,7 @@ public class GibbonAutoCompressor {
     	double trailing = this.trailing.stream().mapToDouble(e -> e).average().getAsDouble();
     	System.out.println(leading + "\t" + this.leading.size() + "\t" + trailing + "\t" + this.trailing.size());
     }
-    
+
     public void printExponents() {
     	System.out.println(this.exponents);
     }

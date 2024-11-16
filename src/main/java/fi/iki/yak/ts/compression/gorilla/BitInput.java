@@ -23,6 +23,14 @@ public interface BitInput {
     long getLong(int bits);
 
     /**
+     * Returns an integer that was stored in the next X bits in the stream.
+     *
+     * @param bits Amount of least significant bits to read from the stream.
+     * @return reads the next int in the series using bits meaningful bits
+     */
+    int getInt(int bits);
+
+    /**
      * Read until next unset bit is found, or until maxBits has been reached.
      *
      * @param maxBits How many bits at maximum until returning
