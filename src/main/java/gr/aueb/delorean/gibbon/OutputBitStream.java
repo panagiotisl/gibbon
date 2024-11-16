@@ -149,7 +149,7 @@ public class OutputBitStream implements Flushable, Closeable {
 	protected final boolean wrapping;
 
 
-	/** This (non-public) constructor exists just to provide fake initialisation for classes such as {@link DebugOutputBitStream}.
+	/** This (non-public) constructor exists just to provide fake initialisation.
 	 */
 	protected OutputBitStream() {
 		os = null;
@@ -337,10 +337,10 @@ public class OutputBitStream implements Flushable, Closeable {
 					avail = buffer.length;
 				}
 				os.flush();
-			}	
+			}
 		} catch (Exception e) {
 		}
-		
+
 	}
 
 
@@ -651,7 +651,7 @@ public class OutputBitStream implements Flushable, Closeable {
 			writtenBits += i;
 
 			return len;
-	
+
 		} catch (Exception e) {
 			return -1;
 		}
@@ -693,11 +693,11 @@ public class OutputBitStream implements Flushable, Closeable {
 			writtenBits += i;
 
 			return len;
-	
+
 		} catch (Exception e) {
 			return -1;
 		}
-		
+
 	}
 
 	/** Writes a natural number in unary coding.

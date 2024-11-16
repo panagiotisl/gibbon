@@ -9,8 +9,8 @@ public class GibbonAutoCompressor {
     private int storedVal = 0;
     private boolean first = true;
     private final int[] cases;
-    private float trailingDiff;
-    private float leadingDiff;
+//    private float trailingDiff;
+//    private float leadingDiff;
 //    private int bufferCounter = 0;
 //    private List<Integer> bufferCounters = new LinkedList<>();
 //    private float max = -Float.MAX_VALUE;
@@ -275,7 +275,7 @@ public class GibbonAutoCompressor {
 //            size += significantBits;
         } else {
         	cases[2] += 1;
-            writeCaseNewLeading(mode);
+            writeCaseNewLeading();
             out.writeBits(leadingZeros, 4); // Number of leading zeros in the next 4 bits
             int significantBits = 32 - leadingZeros - trailingZeros;
 
@@ -312,72 +312,72 @@ public class GibbonAutoCompressor {
     	}
 	}
 
-    private void writeCaseNewLeading(int mode) {
+    private void writeCaseNewLeading() {
 		out.writeBit();
         out.writeBit();
 //        size += 2;
 	}
 
 
-	/**
-     * If there at least as many leading zeros and as many trailing zeros as previous value, control bit = 0 (type a)
-     * store the meaningful XORed value
-     *
-     * @param xor XOR between previous value and current
-     */
-    private void writeExistingLeading(int xor) {
-        writeCaseExistingLeading(mode);
-        int significantBits = 32 - storedLeadingZeros - storedTrailingZeros;
-        out.writeBits(xor >>> storedTrailingZeros, significantBits);
-//        size += significantBits;
-    }
-
-    /**
-     * store the length of the number of leading zeros in the next 5 bits
-     * store length of the meaningful XORed value in the next 6 bits,
-     * store the meaningful bits of the XORed value
-     * (type b)
-     *
-     * @param xor XOR between previous value and current
-     * @param leadingZeros New leading zeros
-     * @param trailingZeros New trailing zeros
-     */
-    private void writeNewLeading(int xor, int leadingZeros, int trailingZeros) {
-    	writeCaseNewLeading(mode);
-        out.writeBits(leadingZeros, 4); // Number of leading zeros in the next 4 bits
-//        out.writeBits(leadingZeros / 2, 3); // Number of leading zeros in the next 4 bits
-        int significantBits = 32 - leadingZeros - trailingZeros;
-
-        // TODO Check if needed
-//        if (significantBits == 32) {
-//        	out.writeBits(0, 5); // Length of meaningful bits in the next 5 bits
-//        } else {
-//        	System.out.println("Wrote SB: " + significantBits);
-        	out.writeBits(significantBits, 5); // Length of meaningful bits in the next 5 bits
-//        }
-        out.writeBits(xor >>> trailingZeros, significantBits); // Store the meaningful bits of XOR
-
-        storedLeadingZeros = leadingZeros;
-        storedTrailingZeros = trailingZeros;
-//        System.out.println("LEADING: " + leadingZeros + " TRAILING: " + trailingZeros + " SIGNIFICANT: " + significantBits);
-//        size += 4 + 5 + significantBits;
-    }
+//	/**
+//     * If there at least as many leading zeros and as many trailing zeros as previous value, control bit = 0 (type a)
+//     * store the meaningful XORed value
+//     *
+//     * @param xor XOR between previous value and current
+//     */
+//    private void writeExistingLeading(int xor) {
+//        writeCaseExistingLeading(mode);
+//        int significantBits = 32 - storedLeadingZeros - storedTrailingZeros;
+//        out.writeBits(xor >>> storedTrailingZeros, significantBits);
+////        size += significantBits;
+//    }
+//
+//    /**
+//     * store the length of the number of leading zeros in the next 5 bits
+//     * store length of the meaningful XORed value in the next 6 bits,
+//     * store the meaningful bits of the XORed value
+//     * (type b)
+//     *
+//     * @param xor XOR between previous value and current
+//     * @param leadingZeros New leading zeros
+//     * @param trailingZeros New trailing zeros
+//     */
+//    private void writeNewLeading(int xor, int leadingZeros, int trailingZeros) {
+//    	writeCaseNewLeading(mode);
+//        out.writeBits(leadingZeros, 4); // Number of leading zeros in the next 4 bits
+////        out.writeBits(leadingZeros / 2, 3); // Number of leading zeros in the next 4 bits
+//        int significantBits = 32 - leadingZeros - trailingZeros;
+//
+//        // TODO Check if needed
+////        if (significantBits == 32) {
+////        	out.writeBits(0, 5); // Length of meaningful bits in the next 5 bits
+////        } else {
+////        	System.out.println("Wrote SB: " + significantBits);
+//        	out.writeBits(significantBits, 5); // Length of meaningful bits in the next 5 bits
+////        }
+//        out.writeBits(xor >>> trailingZeros, significantBits); // Store the meaningful bits of XOR
+//
+//        storedLeadingZeros = leadingZeros;
+//        storedTrailingZeros = trailingZeros;
+////        System.out.println("LEADING: " + leadingZeros + " TRAILING: " + trailingZeros + " SIGNIFICANT: " + significantBits);
+////        size += 4 + 5 + significantBits;
+//    }
 
 //    public int getSize() {
 //    	return size;
 //    }
 
-    public float getLeadingDiff() {
-		return leadingDiff;
-	}
-
-    public float getTrailingDiff() {
-		return trailingDiff;
-	}
-
-    public int[] getCases() {
-		return cases;
-	}
+//    public float getLeadingDiff() {
+//		return leadingDiff;
+//	}
+//
+//    public float getTrailingDiff() {
+//		return trailingDiff;
+//	}
+//
+//    public int[] getCases() {
+//		return cases;
+//	}
 
     public int getBestMode() {
     	return cases[0] > cases[1] ? 0 : 1;

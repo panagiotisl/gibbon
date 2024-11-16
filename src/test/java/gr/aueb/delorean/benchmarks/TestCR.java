@@ -23,7 +23,6 @@ import fi.iki.yak.ts.compression.gorilla.ByteBufferBitInput;
 import fi.iki.yak.ts.compression.gorilla.ByteBufferBitOutput;
 
 import java.io.BufferedReader;
-import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
@@ -187,10 +186,9 @@ public class TestCR {
     private long GibbonRLE(List<Point> ts, double epsilon) {
     	ByteBufferBitOutput output = new ByteBufferBitOutput();
     	RunLengthEncodingLossyCompressor32 compressor = new RunLengthEncodingLossyCompressor32(output, epsilon);
-    	Iterator<Point> iterator = ts.iterator();
-    	while (iterator.hasNext()) {
-    		compressor.addValue((float) iterator.next().getValue());
-    	}
+        for (Point t : ts) {
+            compressor.addValue((float) t.getValue());
+        }
         compressor.close();
         long compressedSize = compressor.getSize() / 8;
 
@@ -379,7 +377,7 @@ public class TestCR {
 
 //    @Test
     public void testFloats() {
-        int spacePowers[] = new int[32];
+        int[] spacePowers = new int[32];
         for (int i=0; i<spacePowers.length; i++) {
             spacePowers[i] = (int) Math.pow(2, i) - 1;
         }
@@ -420,7 +418,7 @@ public class TestCR {
 
     @Test
     public void testZeroingandReplacing() {
-        int spacePowers[] = new int[32];
+        int[] spacePowers = new int[32];
         for (int i=0; i<spacePowers.length; i++) {
             spacePowers[i] = (int) Math.pow(2, i) - 1;
         }
@@ -434,12 +432,11 @@ public class TestCR {
             }
         }
 
-        String line = "";
+        String line;
         double totalError = 0D;
         int count = 0;
         Set<Integer> masks = new HashSet<>();
         Set<Integer> numbers = new HashSet<>();
-        Random random = new Random();
         try (BufferedReader br = new BufferedReader(new InputStreamReader(new GZIPInputStream(TestCR.class.getResourceAsStream("/Cricket-uniq.csv.gz"))))) {
             float storedValueFloat = Float.parseFloat(br.readLine().trim().split(",")[1]);
             while ((line = br.readLine()) != null) {
