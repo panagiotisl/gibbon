@@ -1,12 +1,5 @@
 package gr.aueb.delorean.gibbon;
 
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.LinkedList;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
-
 import fi.iki.yak.ts.compression.gorilla.BitOutput;
 
 public class GibbonAutoCompressor {
@@ -18,7 +11,7 @@ public class GibbonAutoCompressor {
     private final int[] cases;
     private float trailingDiff;
     private float leadingDiff;
-    private int bufferCounter = 0;
+//    private int bufferCounter = 0;
 //    private List<Integer> bufferCounters = new LinkedList<>();
 //    private float max = -Float.MAX_VALUE;
 //    private float min = Float.MAX_VALUE;
@@ -70,7 +63,7 @@ public class GibbonAutoCompressor {
 //       }
 //   }
 
-   private void clearBuffer() {
+//   private void clearBuffer() {
 //	   if (!this.bufferCounters.isEmpty()) {
 //		   System.out.println("AVERAGE: " + this.bufferCounters
 //		            .stream()
@@ -84,7 +77,7 @@ public class GibbonAutoCompressor {
 //       	}
 //   		this.bufferCounter = 0;
 //   	}
-	}
+//	}
 
 	/**
      * Adds a new double value to the series. Note, values must be inserted in order.
@@ -128,113 +121,113 @@ public class GibbonAutoCompressor {
         out.flush();
     }
 
-    private void compressValueLine(int value) {
-        // TODO Fix already compiled into a big method
-        if(value == storedVal) {
-            // Write 0
-        	cases[0] += 1;
-        	writeCaseEqual(mode);
-        } else {
-        	int integerDigits = (value << 1 >>> 24) - 127;
-//        	int integerDigits = ((value >> 23) & 0xff) - 127;
-//        	this.exponents.put(integerDigits, this.exponents.getOrDefault(integerDigits, 0) + 1);
-        	int space = this.positionOfError - integerDigits;
-        	space = Math.min(space, 23);
-        	if (space > 0) {
-        		value = value >> space << space;
-            	value = value | (storedVal & spacePowers[space]);
-        	}
-        	int xor = storedVal ^ value;
-
-        		int leadingZeros = Integer.numberOfLeadingZeros(xor);
-                int trailingZeros = Integer.numberOfTrailingZeros(xor);
-
-                // TODO check if needed
-//                if (leadingZeros + trailingZeros > 32) {
-//                	trailingZeros = 32 - leadingZeros;
-//                }
-
-                // Check overflow of leading? Can't be 32!
-                if(leadingZeros >= 16) {
-                    leadingZeros = 15;
-                }
-
-                // Store bit '1'
-//                out.writeBit();
-//                size += 1;
-
-                if(leadingZeros >= storedLeadingZeros && trailingZeros >= storedTrailingZeros
-                		&& leadingZeros + trailingZeros < storedLeadingZeros + storedTrailingZeros + 6) {
-                	cases[1] += 1;
-                	this.trailingDiff += trailingZeros - storedTrailingZeros;
-                	this.leadingDiff += leadingZeros - storedLeadingZeros;
-                    writeExistingLeading(xor);
-                } else {
-                	cases[2] += 2;
-                    writeNewLeading(xor, leadingZeros, trailingZeros);
-                }
-
-        }
-
-        storedVal = value;
-    }
-
-
-    private void compressValueXorEq(int value) {
-        // TODO Fix already compiled into a big method
-        if(value == storedVal) {
-            // Write 0
-        	cases[0] += 1;
-        	writeCaseEqual(mode);
-//            out.skipBit();
-//            size += 1;
-        } else {
-        	int integerDigits = (value << 1 >>> 24) - 127;
-//        	if (integerDigits < -6 ) {
-//        		integerDigits = -6;
+//    private void compressValueLine(int value) {
+//        // TODO Fix already compiled into a big method
+//        if(value == storedVal) {
+//            // Write 0
+//        	cases[0] += 1;
+//        	writeCaseEqual(mode);
+//        } else {
+//        	int integerDigits = (value << 1 >>> 24) - 127;
+////        	int integerDigits = ((value >> 23) & 0xff) - 127;
+////        	this.exponents.put(integerDigits, this.exponents.getOrDefault(integerDigits, 0) + 1);
+//        	int space = this.positionOfError - integerDigits;
+//        	space = Math.min(space, 23);
+//        	if (space > 0) {
+//        		value = value >> space << space;
+//            	value = value | (storedVal & spacePowers[space]);
 //        	}
-//        	int integerDigits = ((value >> 23) & 0xff) - 127;
-        	int space = this.positionOfError - integerDigits;
-        	space = Math.min(space, 23);
-        	if (space > 0) {
-        		value = value >> space << space;
-            	value = value | (storedVal & ((int) Math.pow(2, space) - 1));
-        	}
-        	int xor = storedVal ^ value;
-
-        	if (xor == 0) {
-        		cases[0] += 1;
-            	writeCaseEqual(mode);
-        	} else {
-        		int leadingZeros = Integer.numberOfLeadingZeros(xor);
-                int trailingZeros = Integer.numberOfTrailingZeros(xor);
-
-                // Check overflow of leading? Can't be 32!
-                if(leadingZeros >= 16) {
-                    leadingZeros = 15;
-                }
-
-                // Store bit '1'
-//                out.writeBit();
-//                size += 1;
-
-                if(leadingZeros >= storedLeadingZeros && trailingZeros >= storedTrailingZeros
-                		&& leadingZeros + trailingZeros < storedLeadingZeros + storedTrailingZeros + 6) {
-                	cases[1] += 1;
-                	this.trailingDiff += trailingZeros - storedTrailingZeros;
-                	this.leadingDiff += leadingZeros - storedLeadingZeros;
-                    writeExistingLeading(xor);
-                } else {
-                	cases[2] += 2;
-                    writeNewLeading(xor, leadingZeros, trailingZeros);
-                }
-
-        	}
-
-        }
-
-        storedVal = value;
-    }
+//        	int xor = storedVal ^ value;
+//
+//        		int leadingZeros = Integer.numberOfLeadingZeros(xor);
+//                int trailingZeros = Integer.numberOfTrailingZeros(xor);
+//
+//                // TODO check if needed
+////                if (leadingZeros + trailingZeros > 32) {
+////                	trailingZeros = 32 - leadingZeros;
+////                }
+//
+//                // Check overflow of leading? Can't be 32!
+//                if(leadingZeros >= 16) {
+//                    leadingZeros = 15;
+//                }
+//
+//                // Store bit '1'
+////                out.writeBit();
+////                size += 1;
+//
+//                if(leadingZeros >= storedLeadingZeros && trailingZeros >= storedTrailingZeros
+//                		&& leadingZeros + trailingZeros < storedLeadingZeros + storedTrailingZeros + 6) {
+//                	cases[1] += 1;
+//                	this.trailingDiff += trailingZeros - storedTrailingZeros;
+//                	this.leadingDiff += leadingZeros - storedLeadingZeros;
+//                    writeExistingLeading(xor);
+//                } else {
+//                	cases[2] += 2;
+//                    writeNewLeading(xor, leadingZeros, trailingZeros);
+//                }
+//
+//        }
+//
+//        storedVal = value;
+//    }
+//
+//
+//    private void compressValueXorEq(int value) {
+//        // TODO Fix already compiled into a big method
+//        if(value == storedVal) {
+//            // Write 0
+//        	cases[0] += 1;
+//        	writeCaseEqual(mode);
+////            out.skipBit();
+////            size += 1;
+//        } else {
+//        	int integerDigits = (value << 1 >>> 24) - 127;
+////        	if (integerDigits < -6 ) {
+////        		integerDigits = -6;
+////        	}
+////        	int integerDigits = ((value >> 23) & 0xff) - 127;
+//        	int space = this.positionOfError - integerDigits;
+//        	space = Math.min(space, 23);
+//        	if (space > 0) {
+//        		value = value >> space << space;
+//            	value = value | (storedVal & ((int) Math.pow(2, space) - 1));
+//        	}
+//        	int xor = storedVal ^ value;
+//
+//        	if (xor == 0) {
+//        		cases[0] += 1;
+//            	writeCaseEqual(mode);
+//        	} else {
+//        		int leadingZeros = Integer.numberOfLeadingZeros(xor);
+//                int trailingZeros = Integer.numberOfTrailingZeros(xor);
+//
+//                // Check overflow of leading? Can't be 32!
+//                if(leadingZeros >= 16) {
+//                    leadingZeros = 15;
+//                }
+//
+//                // Store bit '1'
+////                out.writeBit();
+////                size += 1;
+//
+//                if(leadingZeros >= storedLeadingZeros && trailingZeros >= storedTrailingZeros
+//                		&& leadingZeros + trailingZeros < storedLeadingZeros + storedTrailingZeros + 6) {
+//                	cases[1] += 1;
+//                	this.trailingDiff += trailingZeros - storedTrailingZeros;
+//                	this.leadingDiff += leadingZeros - storedLeadingZeros;
+//                    writeExistingLeading(xor);
+//                } else {
+//                	cases[2] += 2;
+//                    writeNewLeading(xor, leadingZeros, trailingZeros);
+//                }
+//
+//        	}
+//
+//        }
+//
+//        storedVal = value;
+//    }
 
     private void compressValue(int value) {
     	// if values is within error wrt the previous value, use the previous value

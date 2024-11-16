@@ -8,7 +8,7 @@ import java.nio.ByteBuffer;
  * @author Michael Burman
  */
 public class ByteBufferBitInput implements BitInput {
-    private ByteBuffer bb;
+    private final ByteBuffer bb;
     private byte b;
     private int bitsLeft = 0;
 
