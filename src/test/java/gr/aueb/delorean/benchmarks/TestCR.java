@@ -45,6 +45,7 @@ public class TestCR {
     private double error = 0D;
     private double squareError = 0D;
     final String[] filenames = {
+          "/citytemp_f32_series.csv.gz",
           "/Lightning.csv.gz",
           "/Wafer.csv.gz",
           "/MoteStrain.csv.gz",
@@ -141,47 +142,6 @@ public class TestCR {
         decompressionTime += end - start;
         return compressedSize;
     }
-
-
-    private long[] GibbonAuto(List<Point> ts, double epsilon, int mode) {
-    	ByteBufferBitOutput output = new ByteBufferBitOutput();
-    	GibbonAutoCompressor compressor = new GibbonAutoCompressor(output, epsilon, mode);
-    	Iterator<Point> iterator = ts.iterator();
-        long start = System.nanoTime();
-    	while (iterator.hasNext()) {
-    		compressor.addValue((float) iterator.next().getValue());
-    	}
-        compressor.close();
-        long end = System.nanoTime();
-        compressionTime += end - start;
-        //long compressedSize = compressor.getSize() / 8;
-
-        ByteBuffer byteBuffer = output.getByteBuffer();
-        long compressedSize = byteBuffer.position();
-        byteBuffer.flip();
-        ByteBufferBitInput input = new ByteBufferBitInput(byteBuffer);
-        GibbonAutoDecompressor d = new GibbonAutoDecompressor(input);
-        start = System.nanoTime();
-        for (Point point : ts) {
-            float decompressedValue = d.readValue().getFloatValue();
-//            float roundedDecompressedValue = (float) (Math.round(round * decompressedValue) / round);
-//            float originalValue = (float) (Math.round(round * point.getValue()) / round);
-//            System.out.println(((float) point.getValue()) + " " + originalValue + " " + roundedDecompressedValue + " " + decompressedValue + " " + epsilon);
-//            assertEquals(originalValue, roundedDecompressedValue, 0.00001D);
-            error += Math.abs((float) point.getValue() - decompressedValue);
-            squareError += error * error;
-            assertEquals(
-                    (float) point.getValue(),
-                    decompressedValue,
-                    epsilon,
-                    "Value did not match for timestamp " + point.getTimestamp()
-            );
-        }
-        end = System.nanoTime();
-        decompressionTime += end - start;
-        return new long[] {compressedSize, compressor.getBestMode()};
-    }
-
 
     private long GibbonRLE(List<Point> ts, double epsilon) {
     	ByteBufferBitOutput output = new ByteBufferBitOutput();
@@ -354,11 +314,8 @@ public class TestCR {
 	        for (double epsilon : epsilons) {
 	        	long totalCompressedSize = 0;
 	        	long totalSize = 0;
-                compressionTime = 0L;
-                decompressionTime = 0L;
-                error = 0D;
-                squareError = 0D;
-	        	InputStream inputStream = getClass().getResourceAsStream(filename);
+                CompressUtils.init();
+                InputStream inputStream = getClass().getResourceAsStream(filename);
 	        	InputStream gzipStream = new GZIPInputStream(inputStream);
 	            Reader decoder = new InputStreamReader(gzipStream, StandardCharsets.UTF_8);
 	            BufferedReader bufferedReader = new BufferedReader(decoder);
@@ -366,11 +323,11 @@ public class TestCR {
 		        do {
 		        	ts = TimeSeriesReader.getTimeSeriesBlock(bufferedReader, delimiter, blockSize);
 		        	totalSize += ts.size;
-		        	result = GibbonAuto(ts.data, epsilon, (int) result[1]);
+		        	result = CompressUtils.GibbonAuto(ts.data, epsilon, (int) result[1]);
 		        	totalCompressedSize += result[0];
 		        } while (ts.size > 0);
-                System.out.printf("GibbonAuto\t%s\tEpsilon: %.5f\tCompression Ratio: %.3f\tCompression Time: %.3f\tDecompression Time: %.3f\tMAE: %5f\tRMSE: %5f\n",
-                        filename, epsilon, (double) totalSize / totalCompressedSize, compressionTime / 1000000.0, decompressionTime / 1000000.0, error / totalSize, Math.sqrt(squareError / (totalSize * totalSize)));
+                System.out.printf("GibbonAuto\t%s\tEpsilon: %.5f\tCompression Ratio: %.3f\tCompression Time: %.9f\tDecompression Time: %.3f\tMAE: %5f\tRMSE: %5f\n",
+                        filename, epsilon, (double) totalSize / totalCompressedSize, CompressUtils.getCompressionTime() / (double) totalSize, CompressUtils.getDecompressionTime() / (double) totalSize, CompressUtils.getError() / totalSize, Math.sqrt(CompressUtils.getSquareError() / (totalSize * totalSize)));
 	        }
 	    }
 	}

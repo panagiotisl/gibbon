@@ -60,11 +60,8 @@ public class GibbonAutoDecompressor {
     		if (in.readBit()) {
 				// New leading and trailing zeros
 				storedLeadingZeros = in.getInt(4);
-
 				int significantBits = in.getInt(5) ;
-				if(significantBits == 0) {
-					significantBits = 32;
-				}
+				significantBits = significantBits == 0 ? 32 : significantBits;
 				storedTrailingZeros = 32 - significantBits - storedLeadingZeros;
 				int value = in.getInt(32 - storedLeadingZeros - storedTrailingZeros);
 				value <<= storedTrailingZeros;

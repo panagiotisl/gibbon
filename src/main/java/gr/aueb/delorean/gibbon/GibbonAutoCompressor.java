@@ -271,16 +271,19 @@ public class GibbonAutoCompressor {
 //        	this.trailing.add(trailingZeros);
             writeCaseExistingLeading(mode);
             int significantBits = 32 - storedLeadingZeros - storedTrailingZeros;
-            out.writeBits(xor >>> storedTrailingZeros, significantBits);
+            int temp = xor >>> storedTrailingZeros;
+            out.writeBits(temp, significantBits);
 //            size += significantBits;
         } else {
+
         	cases[2] += 1;
             writeCaseNewLeading();
             out.writeBits(leadingZeros, 4); // Number of leading zeros in the next 4 bits
             int significantBits = 32 - leadingZeros - trailingZeros;
+            out.writeBits(significantBits == 32 ? 0 : significantBits, 5); // Length of meaningful bits in the next 5 bits
 
-            out.writeBits(significantBits, 5); // Length of meaningful bits in the next 5 bits
-            out.writeBits(xor >>> trailingZeros, significantBits); // Store the meaningful bits of XOR
+            int temp = xor >>> trailingZeros;
+            out.writeBits(temp, significantBits); // Store the meaningful bits of XOR
 
             storedLeadingZeros = leadingZeros;
             storedTrailingZeros = trailingZeros;
