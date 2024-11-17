@@ -19,8 +19,32 @@ public class TestFCBenchDataset {
     final String datasetPath = "/home/panagiotis/workspace/datasets/FCBench/";
 
     final String[] filenames = {
-            "citytemp_f32.csv.gz",
+            "acs_wht_f32.csv.gz",
             "astro_mhd_f64.csv.gz",
+            "astro_pt_f64.csv.gz",
+            "citytemp_f32.csv.gz",
+            "g24_78_usb2_f32.csv.gz",
+            "h3d_temp_f32.csv.gz",
+            "hdr_night_f32.csv.gz",
+            "hdr_palermo_f32.csv.gz",
+            "hst_wfc3_ir_f32.csv.gz",
+            "hst_wfc3_uvis_f32.csv.gz",
+            "jane_street_f64.csv.gz",
+            "jw_mirimage_f32.csv.gz",
+            "miranda3d_f32.csv.gz",
+            "msg_bt_f64.csv.gz",
+            "num_brain_f64.csv.gz",
+            "num_control_f64.csv.gz",
+            "nyc_taxi2015_f64.csv.gz",
+            "phone_gyro_f64.csv.gz",
+            "rsim_f32.csv.gz",
+            "solar_wind_f32.csv.gz",
+            "spain_gas_price_f64.csv.gz",
+            "spitzer_irac_f32.csv.gz",
+            "ts_gas_f32.csv.gz",
+            "turbulence_f32.csv.gz",
+            "wave_f32.csv.gz",
+            "wesad_chest_f64.csv.gz",
     };
 
     @Test
