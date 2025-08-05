@@ -1,190 +1,398 @@
 package gr.aueb.delorean.gibbon;
 
-import fi.iki.yak.ts.compression.gorilla.BitOutput;
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
 
-/**
- * Implements the time series compression as described in the Facebook's Gorilla Paper. Value compression
- * is for floating points only.
- *
- * @author Michael Burman
- */
 public class GibbonCompressor {
+
+    public static final int ZETA_K = 2;
 
     private int storedLeadingZeros = Integer.MAX_VALUE;
     private int storedTrailingZeros = 0;
     private int storedVal = 0;
+    private float floatStoredVal = 0;
     private boolean first = true;
-    private int size;
-    private int cases[];
-    private float trailingDiff;
-    private float leadingDiff;
+    private int runSize;
+    private List<Integer> zqqs;
+    public final int[] cases;
+    public long trailingZerosSum = 0;
+    public int trailingZerosCnt = 0;
 
-    private BitOutput out;
-    private int logOfError;
-	private double epsilon;
+    private final OutputBitStream out;
+    private int positionOfError;
+	private final double epsilon;
+	private final int k;
+    private final int f;
+    private final int[] spacePowers = new int[32];
 
-    public GibbonCompressor(BitOutput output, double epsilon) {
+    public GibbonCompressor(OutputBitStream output, double epsilon, int k, int f) {
         this.out = output;
-        this.size = 0;
         this.epsilon = epsilon;
+        this.k = k;
+        this.f = f;
+        trailingZerosSum = 0;
+        trailingZerosCnt = 0;
+
         for (int power = 30; power > -30; power--) {
         	if (Math.pow(2, power) < epsilon) {
-        		this.logOfError = power;
+        		this.positionOfError = power + 23;
         		break;
         	}
         }
-        int cases[] = {0, 0, 0};
-        this.cases = cases;
-        this.trailingDiff = 0;
-        this.leadingDiff = 0;
-    }
-
-    /**
-     * Adds a new long value to the series. Note, values must be inserted in order.
-     *
-     * @param timestamp Timestamp which is inside the allowed time block (default 24 hours with millisecond precision)
-     * @param value next floating point value in the series
-     */
-    public void addValue(int value) {
-        if(first) {
-            writeFirst(value);
-        } else {
-            compressValue(value);
+        this.cases = new int[]{0, 0, 0, 0};
+        for (int i=0; i<spacePowers.length; i++) {
+            this.spacePowers[i] = (int) Math.pow(2, i) - 1;
         }
+        this.runSize = 0;
+        this.zqqs = new ArrayList<>();
     }
 
-    /**
+    public void addValue(float value) throws IOException {
+    	addValueInternal(value);
+    }
+
+	/**
      * Adds a new double value to the series. Note, values must be inserted in order.
      *
-     * @param timestamp Timestamp which is inside the allowed time block (default 24 hours with millisecond precision)
      * @param value next floating point value in the series
      */
-    public void addValue(float value) {
+    public void addValueInternal(float value) throws IOException {
         if(first) {
-            writeFirst(Float.floatToRawIntBits(value));
+            // System.out.println(k);
+            writeTwoBitInteger(this.k-2);
+            writeTwoBitInteger(this.f);
+            writeFirst(value);
         } else {
-            compressValue(Float.floatToRawIntBits(value));
+            // compressValueSerfQt(Float.floatToRawIntBits(value));
+        	compressValue(value);
         }
     }
 
-    private void writeFirst(int value) {
+    private void writeFirst(float value) {
     	first = false;
-        storedVal = value;
-        out.writeBits(storedVal, 32);
-        size += 32;
+        storedVal = Float.floatToIntBits(value);
+        floatStoredVal = value;
+        out.writeInt(storedVal, 32);
     }
+
+    private void writeTwoBitInteger(int i) throws IOException {
+		this.out.writeInt(i, 2);
+	}
 
     /**
      * Closes the block and writes the remaining stuff to the BitOutput.
      */
-    public void close() {
-    	addValue(Float.NaN);
-        out.skipBit();
+    public void close() throws IOException {
+        if (runSize > 11) {
+            cases[0] += 1;
+            writeQuantizedValue(f);
+            out.writeZeta(0, k);
+    		out.writeZeta(runSize, ZETA_K);
+    	} else {
+            cases[0] += runSize;
+    		for (int i = 0; i < runSize; i++) {
+    			writeSameValue(f);
+    		}
+    	}
+        runSize = 0;
+        addValue(Float.NaN);
+//    	clearBuffer();
+        out.writeBit(0);
         out.flush();
     }
 
-    private void compressValue(int value) {
-    	// if values is within error wrt the previous value, use the previous value
-    	if (Math.abs(Float.intBitsToFloat(value) - Float.intBitsToFloat(storedVal)) < epsilon) {
-    		// Write 0
-        	cases[0] += 1;
-            out.skipBit();
-            size += 1;
-            return;
-    	}
 
-        // TODO Fix already compiled into a big method
+//     private int compressValueQt(float value) throws IOException {
+//         int q =  (int) Math.round((value - floatStoredVal) / (2 * epsilon));
+//         int zzq = encodeZigZag(q);
+//         float recoverValue = (float) (floatStoredVal + 2 * epsilon * q);
+//         if (Math.abs(recoverValue - value) >= epsilon){
+//             return -1;
+//         }
+//         out.writeBit(0);
+// //        out.writeGamma(zzq);
+//         out.writeZeta(zzq, k);
+//         floatStoredVal = recoverValue;
+//         storedVal = Float.floatToIntBits(floatStoredVal);
+//         this.zqqs.add(zzq);
+//         return zzq;
+//     }
+
+    // private float compressValueXOR(float floatValue) throws IOException {
+
+    //     int value = Float.floatToRawIntBits(floatValue);
+    // 	int integerDigits = (value << 1 >>> 24) - 127;
+    // 	int space = Math.min(23, this.positionOfError - integerDigits);
+
+    // 	if (space > 0) {
+    // 		value = value >> space << space;
+    //     	value = value | (storedVal & spacePowers[space]);
+    // 	}
+    // 	int xor = storedVal ^ value;
+
+    //     int leadingZeros = Integer.numberOfLeadingZeros(xor);
+    //     int trailingZeros = Integer.numberOfTrailingZeros(xor);
+    //     // Check overflow of leading? Can't be 32!
+    //     if(leadingZeros >= 16) {
+    //         leadingZeros = 15;
+    //     }
+
+    //     if((leadingZeros >= storedLeadingZeros && trailingZeros >= storedTrailingZeros)
+    //     		&& leadingZeros + trailingZeros < storedLeadingZeros + storedTrailingZeros + 9 + 0) {
+    //     	cases[1] += 1;
+    //         int significantBits = 32 - storedLeadingZeros - storedTrailingZeros;
+    //         int temp = xor >>> storedTrailingZeros;
+    //         writeCaseExistingLeading();
+    //         out.writeInt(temp, significantBits);
+    //     } else {
+
+    //     	cases[2] += 1;
+    //         writeCaseNewLeading();
+    //         out.writeInt(leadingZeros, 4); // Number of leading zeros in the next 4 bits
+    //         int significantBits = 32 - leadingZeros - trailingZeros;
+    //         out.writeInt(significantBits == 32 ? 0 : significantBits, 5); // Length of meaningful bits in the next 5 bits
+
+    //         int temp = xor >>> trailingZeros;
+    //         out.writeInt(temp, significantBits); // Store the meaningful bits of XOR
+    //         storedLeadingZeros = leadingZeros;
+    //         storedTrailingZeros = trailingZeros;
+    //     }
+
+    //     storedVal = value;
+    //     floatStoredVal = Float.intBitsToFloat(storedVal);
+    //     return floatStoredVal;
+    // }
+
+    private int compressValueQtOrXor(float floatValue) throws IOException {
+        int q =  (int) Math.round((floatValue - floatStoredVal) / (2 * epsilon));
+        int zzq = encodeZigZag(q);
+        float recoverValue = (float) (floatStoredVal + 2 * epsilon * q);
+
+        int value = Float.floatToRawIntBits(floatValue);
     	int integerDigits = (value << 1 >>> 24) - 127;
-    	int space = 23 + this.logOfError - integerDigits;
+    	int space = Math.min(23, this.positionOfError - integerDigits);
 
     	if (space > 0) {
     		value = value >> space << space;
-        	value = value | (storedVal & (2^space - 1));
+        	value = value | (storedVal & spacePowers[space]);
     	}
-
     	int xor = storedVal ^ value;
 
         int leadingZeros = Integer.numberOfLeadingZeros(xor);
         int trailingZeros = Integer.numberOfTrailingZeros(xor);
-
-        // Check overflow of leading? Can't be 32!
+        trailingZerosSum += trailingZeros;
+        trailingZerosCnt++;
         if(leadingZeros >= 16) {
             leadingZeros = 15;
         }
-//            leadingZeros = leadingZeros % 2 == 0 ? leadingZeros : (leadingZeros - 1);
-
-        // Store bit '1'
-        out.writeBit();
-        size += 1;
 
         if((leadingZeros >= storedLeadingZeros && trailingZeros >= storedTrailingZeros)
-        		&& leadingZeros + trailingZeros < storedLeadingZeros + storedTrailingZeros + 10) {
-        	cases[1] += 1;
-        	this.trailingDiff += trailingZeros - storedTrailingZeros;
-        	this.leadingDiff += leadingZeros - storedLeadingZeros;
-            writeExistingLeading(xor);
-        } else {
-        	cases[2] += 1;
-            writeNewLeading(xor, leadingZeros, trailingZeros);
-        }
+        		&& leadingZeros + trailingZeros < storedLeadingZeros + storedTrailingZeros + 9) {
 
+            int significantBits = 32 - storedLeadingZeros - storedTrailingZeros;
+            if ((zzq >= 0) && zetaKLength(zzq, k) + 2 < significantBits && !((Math.abs(recoverValue - floatValue) >= epsilon))) {
+            // if (zzq < 4096 && !((Math.abs(recoverValue - floatValue) >= epsilon))) {
+                cases[1] += 1;
+                writeQuantizedValue(f);
+                out.writeZeta(zzq, k);
+                floatStoredVal = recoverValue;
+                storedVal = Float.floatToIntBits(floatStoredVal);
+                this.zqqs.add(zzq);
+                return -1;
+            }
+            cases[2] += 1;
+            writeExistingLead(f);
+            int temp = xor >>> storedTrailingZeros;
+            out.writeInt(temp, significantBits);
+        } else {
+
+            int significantBits = 32 - leadingZeros - trailingZeros;
+            if ((zzq >= 0) && (zetaKLength(zzq, k)  + 2 < 9 + significantBits) && !((Math.abs(recoverValue - floatValue) >= epsilon))) {
+            // if ((zzq < 4096) && !((Math.abs(recoverValue - floatValue) >= epsilon))) {
+                cases[1] += 1;
+                writeQuantizedValue(f);
+                out.writeZeta(zzq, k);
+                floatStoredVal = recoverValue;
+                storedVal = Float.floatToIntBits(floatStoredVal);
+                this.zqqs.add(zzq);
+                return -1;
+            }
+            cases[3] += 1;
+            writeNewLead(f);
+            out.writeInt(leadingZeros, 4); // Number of leading zeros in the next 4 bits
+            out.writeInt(significantBits == 32 ? 0 : significantBits, 5); // Length of meaningful bits in the next 5 bits
+            int temp = xor >>> trailingZeros;
+            out.writeInt(temp, significantBits); // Store the meaningful bits of XOR
+            storedLeadingZeros = leadingZeros;
+            storedTrailingZeros = trailingZeros;
+        }
         storedVal = value;
+        floatStoredVal = Float.intBitsToFloat(storedVal);
+        return 1;
+
     }
 
-    /**
-     * If there at least as many leading zeros and as many trailing zeros as previous value, control bit = 0 (type a)
-     * store the meaningful XORed value
-     *
-     * @param xor XOR between previous value and current
-     */
-    private void writeExistingLeading(int xor) {
-        out.skipBit();
-        int significantBits = 32 - storedLeadingZeros - storedTrailingZeros;
-        out.writeBits(xor >>> storedTrailingZeros, significantBits);
-        size += 1 + significantBits;
+    private void compressValue(float value) throws IOException {
+
+    	// if values is within error wrt the previous value, use the previous value
+    	if (Math.abs(value - floatStoredVal) < epsilon) {
+    		// Write 0
+        	// out.writeBit(0);
+            runSize++;
+            return;
+    	}
+
+    	if (runSize > 11) {
+            cases[0] += 1;
+            writeQuantizedValue(f);
+            out.writeZeta(0, k);
+    		out.writeZeta(runSize, ZETA_K);
+    	} else {
+            cases[0] += runSize;
+    		for (int i = 0; i < runSize; i++) {
+                writeSameValue(f);
+    		}
+    	}
+        runSize = 0;
+
+        compressValueQtOrXor(value);
+
+        return;
     }
 
-    /**
-     * store the length of the number of leading zeros in the next 5 bits
-     * store length of the meaningful XORed value in the next 6 bits,
-     * store the meaningful bits of the XORed value
-     * (type b)
-     *
-     * @param xor XOR between previous value and current
-     * @param leadingZeros New leading zeros
-     * @param trailingZeros New trailing zeros
-     */
-    private void writeNewLeading(int xor, int leadingZeros, int trailingZeros) {
-        out.writeBit();
-        out.writeBits(leadingZeros, 4); // Number of leading zeros in the next 4 bits
-//        out.writeBits(leadingZeros / 2, 3); // Number of leading zeros in the next 4 bits
-
-        int significantBits = 32 - leadingZeros - trailingZeros;
-        if (significantBits == 32) {
-        	out.writeBits(0, 5); // Length of meaningful bits in the next 5 bits
-        } else {
-        	out.writeBits(significantBits, 5); // Length of meaningful bits in the next 5 bits
+    private void writeSameValue(int f) throws IOException {
+        switch (f) {
+            case 0:
+                writeCase0();
+                break;
+            default:
+                writeCase10();
+                break;
         }
-        out.writeBits(xor >>> trailingZeros, significantBits); // Store the meaningful bits of XOR
-
-        storedLeadingZeros = leadingZeros;
-        storedTrailingZeros = trailingZeros;
-        size += 1 + 4 + 5 + significantBits;
     }
 
-    public int getSize() {
-    	return size;
+    private void writeQuantizedValue(int f) throws IOException {
+        switch (f) {
+            case 0:
+                writeCase10();
+                break;
+            case 1:
+                writeCase0();
+                break;
+            case 2:
+                writeCase110();
+                break;
+            case 3:
+                writeCase111();
+                break;
+        }
     }
 
-    public float getLeadingDiff() {
-		return leadingDiff;
-	}
+    private void writeExistingLead(int f) throws IOException {
+        switch (f) {
+            case 2:
+                writeCase0();
+                break;
+            default:
+                writeCase110();
+                break;
+        }
+    }
 
-    public float getTrailingDiff() {
-		return trailingDiff;
-	}
+    private void writeNewLead(int f) throws IOException {
+        switch (f) {
+            case 3:
+                writeCase0();
+                break;
+            default:
+                writeCase111();
+                break;
+        }
+    }
 
-    public int[] getCases() {
-		return cases;
-	}
+    private void writeCase0() throws IOException {
+        out.writeBit(0);
+    }
+
+    private void writeCase10() throws IOException {
+        out.writeBit(1);
+        out.writeBit(0);
+    }
+
+    private void writeCase110() throws IOException {
+        out.writeBit(1);
+        out.writeBit(1);
+        out.writeBit(0);
+    }
+
+    private void writeCase111() throws IOException {
+        out.writeBit(1);
+        out.writeBit(1);
+        out.writeBit(1);
+    }
+
+    public int getK() {
+        double median = findMedian(zqqs);
+        // System.out.println(median);
+        if (median < 16) {
+            return 2;
+        } else if (median < 64) {
+            return 3;
+        } else if (median < 512) {
+            return 4;
+        } else {
+            return 5;
+        }
+    }
+
+    public int getBestMode() {
+        int maxIndex = 0; // Assume first element is max
+        for (int i = 1; i < cases.length; i++) {
+            if (cases[i] > cases[maxIndex]) {
+                maxIndex = i; // Update index if a larger value is found
+            }
+        }
+        return maxIndex;
+    }
+
+
+       // Encode a signed int to an unsigned int using ZigZag
+    public static int encodeZigZag(int value) {
+        return (value << 1) ^ (value >> 31);
+    }
+
+
+    public static int zetaKLength(int n, int k) {
+        // if (n <= 0 || k <= 0) {
+        //     throw new IllegalArgumentException("Both n and k must be positive integers.");
+        // }
+
+        // l = ceil(log2(n + 1) / k)
+        int l = (int) Math.ceil((Math.log(n + 1) / Math.log(2)) / k);
+
+        // Total bits: (l - 1) * (k + 1) + 1
+        return (l - 1) * (k + 1) + 1;
+    }
+
+    public static double findMedian(List<Integer> numbers) {
+        if (numbers == null || numbers.isEmpty()) {
+            return 0;
+        }
+        // Sort the list
+        Collections.sort(numbers);
+
+        int size = numbers.size();
+        int middle = size / 2;
+
+        // If the size is odd, return the middle element
+        if (size % 2 != 0) {
+            return numbers.get(middle);
+        }
+
+        // If the size is even, return the average of the two middle elements
+        return (numbers.get(middle - 1) + numbers.get(middle)) / 2.0;
+    }
+
 }
