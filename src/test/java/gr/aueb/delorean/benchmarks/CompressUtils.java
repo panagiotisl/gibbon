@@ -68,7 +68,7 @@ public class CompressUtils {
             assertEquals(
                     (float) point.getValue(),
                     decompressedValue,
-                    epsilon*1.0001,
+                    epsilon,
                     "Value did not match for timestamp " + point.getTimestamp()
             );
         }
