@@ -76,10 +76,12 @@ public class CompressUtils {
             float decompressedValue = decompressedValues[i++];
             error += Math.abs((float) point.getValue() - decompressedValue);
             squareError += error * error;
+            double factor = 1.01 * epsilon;
+            if (decompressorClass == SerfQtDecompressor.class) { factor = epsilon * 2D; } // needed for SerfQt
             assertEquals(
                     (float) point.getValue(),
                     decompressedValue,
-                    epsilon * 2, // needed for SerfQt
+                    factor,
                     "Value did not match for timestamp " + point.getTimestamp()
             );
         }

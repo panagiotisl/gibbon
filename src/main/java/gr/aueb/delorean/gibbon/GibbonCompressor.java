@@ -1,12 +1,10 @@
 package gr.aueb.delorean.gibbon;
 
+import cern.colt.list.IntArrayList;
 import gr.aueb.delorean.Compressor;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.List;
 
 import static gr.aueb.delorean.gibbon.ZetaOutputBitStream.ZETA_THRESHOLD;
 import static gr.aueb.delorean.gibbon.ZetaOutputBitStream.zetaKLength;
@@ -22,7 +20,7 @@ public class GibbonCompressor implements Compressor {
     private float floatStoredVal = 0;
     private boolean first = true;
     private int runSize;
-    private final List<Integer> zqqs;
+    private final IntArrayList zqqs;
     public final int[] cases;
 
     private final ByteArrayOutputStream byteOut;
@@ -56,7 +54,7 @@ public class GibbonCompressor implements Compressor {
             this.spacePowers[i] = (int) Math.pow(2, i) - 1;
         }
         this.runSize = 0;
-        this.zqqs = new ArrayList<>(1000);
+        this.zqqs = new IntArrayList(1000);
     }
 
     @Override
@@ -253,11 +251,12 @@ public class GibbonCompressor implements Compressor {
         return (value << 1) ^ (value >> 31);
     }
 
-    public static double findMedian(List<Integer> numbers) {
+    public static double findMedian(IntArrayList numbers) {
         if (numbers == null || numbers.isEmpty()) {
             return 0;
         }
-        Collections.sort(numbers);
+        numbers.sort();
+//        Collections.sort(numbers);
 
         int size = numbers.size();
         int middle = size / 2;
