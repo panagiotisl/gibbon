@@ -1,4 +1,4 @@
-package fi.iki.yak.ts.compression.gorilla;
+package gr.aueb.delorean.lossless;
 
 import java.nio.ByteBuffer;
 
@@ -8,7 +8,7 @@ import java.nio.ByteBuffer;
  * @author Michael Burman
  */
 public class ByteBufferBitOutput implements BitOutput {
-    public static final int DEFAULT_ALLOCATION = 4096;
+    public static final int DEFAULT_ALLOCATION = 4096 * 2;
 
     private ByteBuffer bb;
     private byte b;

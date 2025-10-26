@@ -1,32 +1,39 @@
 package gr.aueb.delorean.gibbon;
 
+import gr.aueb.delorean.Decompressor;
+
 import java.io.IOException;
 
-/**
- * Decompresses a compressed stream created by the Compressor. Returns pairs of timestamp and floating point value.
- *
- * @author Michael Burman
- */
-public class GibbonDecompressor {
+public class GibbonDecompressor implements Decompressor {
 
-    private int storedLeadingZeros = Integer.MAX_VALUE;
     private int storedTrailingZeros = 0;
+	private int totalStoredZeros = 0;
     private int storedVal = 0;
+	private float floatStoredVal = 0;
     private int k;
 	private int f;
     private boolean first = true;
     private boolean endOfStream = false;
-	private double epsilon;
+    private final double twoEpsilon;
 	private int runSize = 0;
 
-    private final InputBitStream in;
+    private final ZetaInputBitStream in;
 
     private final static int NAN_INT = 0x7fc00000;
 
+	public static final int MAX_ENCODED = 16384; // inclusive upper bound
+    public static final int[] DECODE = new int[MAX_ENCODED];
 
-    public GibbonDecompressor(InputBitStream input, double epsilon) {
-        in = input;
-		this.epsilon = epsilon;
+    static {
+        for (int i = 0; i < MAX_ENCODED; i++) {
+            DECODE[i] = (i >>> 1) ^ -(i & 1);
+        }
+    }
+
+
+    public GibbonDecompressor(byte[] byteBuffer, double epsilon) {
+        this.in = new ZetaInputBitStream(byteBuffer);
+        this.twoEpsilon = 2 * epsilon;
     }
 
     /**
@@ -34,41 +41,58 @@ public class GibbonDecompressor {
      *
      * @return Pair if there's next value, null if series is done.
      */
-    public Value readValue() throws IOException {
-        next();
-        if(endOfStream) {
-            return null;
-        }
-        return new Value(storedVal);
-    }
-
-    private void next() throws IOException {
+	@Override
+    public Float readValue() throws IOException {
         if (first) {
         	first = false;
 			this.k = in.readInt(2) + 2;
 			this.f = in.readInt(2);
             storedVal = in.readInt(32);
+			floatStoredVal = Float.intBitsToFloat(storedVal);
             if (storedVal == NAN_INT) {
             	endOfStream = true;
             }
 
         } else {
-        	nextValue();
+        	if (runSize > 0) {
+    			runSize--;
+				return floatStoredVal;
+			}
+			if (in.readBit()==0) { // case 0
+				switch (f) {
+					case 1:
+						nextValueQt();
+						break;
+					case 2:
+						nextValueExistingLead();
+						break;
+					case 3:
+						nextValueNewLead();
+					default:
+						break;
+				}
+			} else { // case 10
+				if (in.readBit()==0) {
+					if (f == 0 ) nextValueQt();
+				} else { // case 110
+					if (in.readBit()==0) {
+						if (f == 2) nextValueQt();
+						else nextValueExistingLead();
+					} else { // case 111
+						if (f == 3) nextValueQt();
+						else nextValueNewLead();
+					}
+				}
+			}
+
         }
+        if(endOfStream) {
+            return null;
+        }
+		return floatStoredVal;
     }
 
-	// private void nextValueSerfQt() throws IOException {
-	// 	//		int zzq = in.readGamma();
-	// 			int zzq = in.readZeta(k);
-	// 			int q = decodeZigZag(zzq);
-	// 			float recoverValue = (float) (Float.intBitsToFloat(storedVal) + 2 * epsilon * q);
-	// 	//		System.out.println(Float.intBitsToFloat(storedVal) + " " + recoverValue + " " + zzq + " " + q);
-	// 			storedVal = Float.floatToRawIntBits(recoverValue);
-	// 			return;
-	// }
-
 	private void nextValueQt() throws IOException {
-		//		int zzq = in.readGamma();
 		int zzq = in.readZeta(k);
 		if (zzq == 0) {
 			runSize = in.readZeta(GibbonCompressor.ZETA_K);
@@ -76,113 +100,46 @@ public class GibbonDecompressor {
 			return;
 		}
 		int q = decodeZigZag(zzq);
-		float recoverValue = (float) (Float.intBitsToFloat(storedVal) + 2 * epsilon * q);
-		//		System.out.println(Float.intBitsToFloat(storedVal) + " " + recoverValue + " " + zzq + " " + q);
+		float recoverValue = (float) (Float.intBitsToFloat(storedVal) + twoEpsilon * q);
+		floatStoredVal = recoverValue;
 		storedVal = Float.floatToRawIntBits(recoverValue);
 		return;
 	}
 
 	private void nextValueExistingLead() throws IOException {
-		// System.out.println("DL1");
-		int value = in.readInt(32 - storedLeadingZeros - storedTrailingZeros);
+		int value = in.readInt(32 - totalStoredZeros);
 		value <<= storedTrailingZeros;
 		value = storedVal ^ value;
 		if (value == NAN_INT) {
 			endOfStream = true;
 		} else {
 			storedVal = value;
+			floatStoredVal = Float.intBitsToFloat(storedVal);
 		}
 	}
 
 	private void nextValueNewLead() throws IOException {
 		// New leading and trailing zeros
-		storedLeadingZeros = in.readInt(4);
-		int significantBits = in.readInt(5) ;
-		significantBits = significantBits == 0 ? 32 : significantBits;
+        int storedLeadingZeros = in.readInt(4);
+		int significantBits = in.readInt(5);
+
+		if (significantBits == 0) significantBits = 32;
 		storedTrailingZeros = 32 - significantBits - storedLeadingZeros;
-		int value = in.readInt(32 - storedLeadingZeros - storedTrailingZeros);
-		// System.out.println("DL2 " + storedLeadingZeros + " " + significantBits + " " + value);
+		totalStoredZeros = storedLeadingZeros + storedTrailingZeros;
+		int value = in.readInt(32 - totalStoredZeros);
 		value <<= storedTrailingZeros;
 		value = storedVal ^ value;
 		if (value == NAN_INT) {
 			endOfStream = true;
 		} else {
 			storedVal = value;
-		}
-	}
-
-    private void nextValue() throws IOException {
-		if (runSize > 0) {
-    		runSize--;
-    		return;
-    	}
-		if (in.readBit()==0) { // case 0
-			nextValue0(f);
-		} else { // case 10
-			if (in.readBit()==0) {
-				nextValue10(f);
-			} else { // case 110
-				if (in.readBit()==0) {
-					nextValue110(f);
-				} else { // case 111
-					nextValue111(f);
-				}
-			}
-		}
-
-    }
-
-	private void nextValue0(int f) throws IOException {
-		switch (f) {
-			case 0:
-				break;
-			case 1:
-				nextValueQt();
-				break;
-			case 2:
-				nextValueExistingLead();
-				break;
-			case 3:
-				nextValueNewLead();
-			default:
-				break;
-		}
-	}
-
-	private void nextValue10(int f) throws IOException {
-		switch (f) {
-			case 0:
-				nextValueQt();
-				break;
-			default:
-				break;
-		}
-	}
-
-	private void nextValue110(int f) throws IOException {
-		switch (f) {
-			case 2:
-				nextValueQt();
-				break;
-			default:
-				nextValueExistingLead();
-				break;
-		}
-	}
-
-	private void nextValue111(int f) throws IOException {
-		switch (f) {
-			case 3:
-				nextValueQt();
-				break;
-			default:
-				nextValueNewLead();
-				break;
+			floatStoredVal = Float.intBitsToFloat(storedVal);
 		}
 	}
 
 	// Decode a ZigZag-encoded unsigned int back to a signed int
     public static int decodeZigZag(int encoded) {
+		if (encoded < MAX_ENCODED) return DECODE[encoded];
         return (encoded >>> 1) ^ -(encoded & 1);
     }
 

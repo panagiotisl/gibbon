@@ -13,7 +13,4 @@ public class TimeSeries {
         this.size = data.size() * (4 + 4);
     }
 
-    public int length() {
-        return data.size();
-    }
 }

@@ -1,4 +1,4 @@
-package fi.iki.yak.ts.compression.gorilla;
+package gr.aueb.delorean.lossless;
 
 import java.nio.ByteBuffer;
 
